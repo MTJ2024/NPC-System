@@ -75,7 +75,10 @@ local function ladeAlleNpcs(callback)
     exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs', {}, function(npcs)
         local placedNpcs = npcs or {}
         if callback then callback(placedNpcs) end
+        -- Update the UI list for all clients
         TriggerClientEvent("npc_dashboard:updateNPCList", -1, placedNpcs)
+        -- Also sync/spawn the actual NPC peds in-game for all clients
+        TriggerClientEvent("npc_dashboard:syncAllNpcs", -1, placedNpcs)
     end)
 end
 
@@ -125,7 +128,6 @@ AddEventHandler("npc_dashboard:addNPC", function(data)
         data.violent or 0, data.movement or 0, data.ignoreGroups or '', data.ignoreJobs or ''
     }, function()
         ladeAlleNpcs()
-        TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
     end)
 end)
 
@@ -143,7 +145,6 @@ AddEventHandler("npc_dashboard:updateNPC", function(data)
         data.violent or 0, data.movement or 0, data.ignoreGroups or '', data.ignoreJobs or '', data.id
     }, function()
         ladeAlleNpcs()
-        TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
     end)
 end)
 
@@ -153,7 +154,6 @@ AddEventHandler("npc_dashboard:deleteNPC", function(id)
     if not isAdmin(src) then return end
     exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs WHERE id = ?', {id}, function()
         ladeAlleNpcs()
-        TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
     end)
 end)
 
@@ -163,7 +163,6 @@ AddEventHandler("npc_dashboard:deleteAllNPCs", function()
     if not isAdmin(src) then return end
     exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs', {}, function()
         ladeAlleNpcs()
-        TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
     end)
 end)
 

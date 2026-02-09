@@ -248,6 +248,13 @@ RegisterNUICallback("close", function()
     SendNUIMessage({ type = "close" })
 end)
 
+RegisterNUICallback("getNPCList", function(data, cb)
+    ESX.TriggerServerCallback('npc_dashboard:getNPCList', function(npcs)
+        SendNUIMessage({ type = "refresh", npcs = npcs or {} })
+    end)
+    cb("ok")
+end)
+
 RegisterNUICallback("addNPC", function(data, cb)
     if type(data.behavior) == "number" then
         data.behavior = tostring(data.behavior)
