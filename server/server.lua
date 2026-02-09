@@ -146,13 +146,17 @@ AddEventHandler("npc_dashboard:updateNPC", function(data)
     if not data or not data.model or not data.id or not isAllowedModel(data.model) then return end
     local weapon = data.weapon or ""
     if not isAllowedWeapon(weapon) then return end
+    local x = tonumber(data.x)
+    local y = tonumber(data.y)
+    local z = tonumber(data.z)
+    if not x or not y or not z then return end
     exports.oxmysql:execute([[
         UPDATE npc_dashboard_npcs SET
         name = ?, model = ?, weapon = ?, behavior = ?, radius = ?, x = ?, y = ?, z = ?, heading = ?, violent = ?, movement = ?, ignoreGroups = ?, ignoreJobs = ?
         WHERE id = ?
     ]], {
         data.name or "NPC", data.model, weapon, data.behavior or "Passiv",
-        tonumber(data.radius) or 10, tonumber(data.x) or 0, tonumber(data.y) or 0, tonumber(data.z) or 0,
+        tonumber(data.radius) or 10, x, y, z,
         tonumber(data.heading) or 0.0, tonumber(data.violent) or 0, tonumber(data.movement) or 0,
         data.ignoreGroups or '', data.ignoreJobs or '', data.id
     }, function()

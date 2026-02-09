@@ -269,28 +269,25 @@ RegisterNUICallback("getNPCList", function(data, cb)
     cb("ok")
 end)
 
-RegisterNUICallback("addNPC", function(data, cb)
+-- Normalize NPC data from NUI before sending to server
+local function normalizeNpcData(data)
     if type(data.behavior) == "number" then
         data.behavior = tostring(data.behavior)
     end
-    -- Ensure movement is a number (JS sends 0/1 but ensure it)
     data.movement = tonumber(data.movement) or 0
-    -- Ensure radius is a number
     data.radius = tonumber(data.radius) or 10
+    data.heading = tonumber(data.heading) or 0.0
+    return data
+end
+
+RegisterNUICallback("addNPC", function(data, cb)
+    normalizeNpcData(data)
     TriggerServerEvent("npc_dashboard:addNPC", data)
     cb("ok")
 end)
 
 RegisterNUICallback("updateNPC", function(data, cb)
-    if type(data.behavior) == "number" then
-        data.behavior = tostring(data.behavior)
-    end
-    -- Ensure movement is a number
-    data.movement = tonumber(data.movement) or 0
-    -- Ensure radius is a number
-    data.radius = tonumber(data.radius) or 10
-    -- Ensure heading is a number
-    data.heading = tonumber(data.heading) or 0.0
+    normalizeNpcData(data)
     TriggerServerEvent("npc_dashboard:updateNPC", data)
     cb("ok")
 end)
