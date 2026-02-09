@@ -1,37 +1,39 @@
 console.log("NPC Dashboard JS geladen!");
 
-// Status an Server: HTML erfolgreich geladen!
 if (typeof GetParentResourceName === "function") {
   fetch(`https://${GetParentResourceName()}/htmlGeladen`, { method: 'POST' });
 }
 
+/* ===== NPC Type Definitions (synced with server) ===== */
 const npcTypes = [
-  { name: "Polizist", model: "s_m_y_cop_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 15 },
-  { name: "Sheriff", model: "s_m_y_sheriff_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 15 },
-  { name: "Gangmitglied", model: "g_m_y_ballaeast_01", weapon: "WEAPON_MICROSMG", behavior: "Aggressiv", radius: 10 },
-  { name: "Mafia", model: "g_m_m_chicold_01", weapon: "WEAPON_PISTOL", behavior: "Aggressiv", radius: 10 },
-  { name: "Dealer", model: "g_m_y_mexgoon_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10 },
-  { name: "Sicherheitskraft", model: "s_m_m_security_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 15 },
-  { name: "Türsteher", model: "s_m_m_bouncer_01", weapon: "WEAPON_BAT", behavior: "Neutral", radius: 10 },
-  { name: "Koch mit Messer", model: "s_m_y_chef_01", weapon: "WEAPON_KNIFE", behavior: "Passiv", radius: 8 },
-  { name: "Pilot mit Pistole", model: "s_m_m_pilot_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10 },
-  { name: "Mechaniker mit Schraubenschlüssel", model: "s_m_m_autoshop_01", weapon: "WEAPON_WRENCH", behavior: "Neutral", radius: 8 },
-  { name: "Geschäftsmann", model: "a_m_m_business_01", weapon: "", behavior: "Passiv", radius: 8 },
-  { name: "VIP", model: "a_m_y_business_01", weapon: "", behavior: "Neutral", radius: 8 },
-  { name: "Sanitäter", model: "s_m_m_paramedic_01", weapon: "", behavior: "Passiv", radius: 10 },
-  { name: "Feuerwehrmann", model: "s_m_y_fireman_01", weapon: "", behavior: "Passiv", radius: 10 },
-  { name: "Taxifahrer", model: "s_m_m_taxi_01", weapon: "", behavior: "Passiv", radius: 8 },
-  { name: "Obdachloser", model: "a_m_m_tramp_01", weapon: "", behavior: "Passiv", radius: 8 },
-  { name: "Jogger", model: "a_m_y_jogger_01", weapon: "", behavior: "Passiv", radius: 8 },
-  { name: "Bauarbeiter", model: "s_m_y_construct_01", weapon: "", behavior: "Neutral", radius: 10 },
-  { name: "Arzt", model: "s_m_m_doctor_01", weapon: "", behavior: "Passiv", radius: 10 },
-  { name: "Landwirt", model: "a_m_m_farmer_01", weapon: "", behavior: "Passiv", radius: 10 },
-  { name: "Army", model: "s_m_y_marine_03", weapon: "WEAPON_CARBINERIFLE", behavior: "Aggressiv", radius: 20 }
+  { name: "Polizist", model: "s_m_y_cop_01", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "law" },
+  { name: "Sheriff", model: "s_m_y_sheriff_01", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "law" },
+  { name: "Gangmitglied", model: "g_m_y_ballaeast_01", weapon: "WEAPON_MICROSMG", behavior: "Aggressiv", radius: 10, category: "criminal" },
+  { name: "Mafia", model: "g_m_m_chicold_01", weapon: "WEAPON_PISTOL", behavior: "Aggressiv", radius: 10, category: "criminal" },
+  { name: "Dealer", model: "g_m_y_mexgoon_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10, category: "criminal" },
+  { name: "Sicherheitskraft", model: "s_m_m_security_01", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "security" },
+  { name: "Türsteher", model: "s_m_m_bouncer_01", weapon: "WEAPON_BAT", behavior: "Wache", radius: 10, category: "security" },
+  { name: "Koch mit Messer", model: "s_m_y_chef_01", weapon: "WEAPON_KNIFE", behavior: "Passiv", radius: 8, category: "civilian" },
+  { name: "Pilot mit Pistole", model: "s_m_m_pilot_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10, category: "civilian" },
+  { name: "Mechaniker mit Schraubenschlüssel", model: "s_m_m_autoshop_01", weapon: "WEAPON_WRENCH", behavior: "Neutral", radius: 8, category: "civilian" },
+  { name: "Geschäftsmann", model: "a_m_m_business_01", weapon: "", behavior: "Passiv", radius: 8, category: "civilian" },
+  { name: "VIP", model: "a_m_y_business_01", weapon: "", behavior: "Neutral", radius: 8, category: "civilian" },
+  { name: "Sanitäter", model: "s_m_m_paramedic_01", weapon: "", behavior: "Passiv", radius: 10, category: "emergency" },
+  { name: "Feuerwehrmann", model: "s_m_y_fireman_01", weapon: "", behavior: "Passiv", radius: 10, category: "emergency" },
+  { name: "Taxifahrer", model: "s_m_m_taxi_01", weapon: "", behavior: "Passiv", radius: 8, category: "civilian" },
+  { name: "Obdachloser", model: "a_m_m_tramp_01", weapon: "", behavior: "Passiv", radius: 8, category: "civilian" },
+  { name: "Jogger", model: "a_m_y_jogger_01", weapon: "", behavior: "Passiv", radius: 8, category: "civilian" },
+  { name: "Bauarbeiter", model: "s_m_y_construct_01", weapon: "", behavior: "Neutral", radius: 10, category: "civilian" },
+  { name: "Arzt", model: "s_m_m_doctor_01", weapon: "", behavior: "Passiv", radius: 10, category: "emergency" },
+  { name: "Landwirt", model: "a_m_m_farmer_01", weapon: "", behavior: "Passiv", radius: 10, category: "civilian" },
+  { name: "Army", model: "s_m_y_marine_03", weapon: "WEAPON_CARBINERIFLE", behavior: "Aggressiv", radius: 20, category: "military" }
 ];
+
 const weaponList = [
   { label: "Keine Waffe", value: "" },
   { label: "Pistole", value: "WEAPON_PISTOL" },
   { label: "Maschinenpistole", value: "WEAPON_MICROSMG" },
+  { label: "Karabiner", value: "WEAPON_CARBINERIFLE" },
   { label: "Messer", value: "WEAPON_KNIFE" },
   { label: "Schläger", value: "WEAPON_BAT" },
   { label: "Schraubenschlüssel", value: "WEAPON_WRENCH" }
@@ -40,41 +42,71 @@ const weaponList = [
 const behaviorList = [
   { label: "Passiv", value: "Passiv" },
   { label: "Neutral", value: "Neutral" },
+  { label: "Wache", value: "Wache" },
   { label: "Aggressiv", value: "Aggressiv" }
 ];
 
+const categoryMap = {
+  law: { label: "Strafverfolgung", icon: "fa-shield-halved", color: "cat-law" },
+  criminal: { label: "Kriminelle", icon: "fa-skull-crossbones", color: "cat-criminal" },
+  security: { label: "Sicherheit", icon: "fa-user-shield", color: "cat-security" },
+  military: { label: "Militär", icon: "fa-jet-fighter", color: "cat-military" },
+  emergency: { label: "Rettungsdienste", icon: "fa-truck-medical", color: "cat-emergency" },
+  civilian: { label: "Zivilisten", icon: "fa-person-walking", color: "cat-civilian" }
+};
+
+const behaviorIcons = {
+  "Aggressiv": "fa-skull",
+  "Wache": "fa-shield-halved",
+  "Neutral": "fa-scale-balanced",
+  "Passiv": "fa-dove"
+};
+
+const weaponLabels = {};
+weaponList.forEach(w => { weaponLabels[w.value] = w.label; });
+
+/* ===== State ===== */
 let npcList = [];
 let editNPC = null;
 let createPending = null;
-let openTab = 0;
+let activePanel = "overview";
+let activeCategory = null;
+let searchQuery = "";
 let focusState = true;
 
+/* ===== DOM Ready ===== */
 document.addEventListener("DOMContentLoaded", function() {
   const dashboardUI = document.getElementById("npc-dashboard-ui");
-  const tabBar = document.getElementById("tab-bar");
+  const sidebarNav = document.getElementById("sidebar-nav");
+  const topbarTitle = document.getElementById("topbar-title");
+  const searchBox = document.getElementById("search-box");
+  const searchInput = document.getElementById("search-input");
+  const overviewPanel = document.getElementById("overview-panel");
   const npcListPanel = document.getElementById("npc-list-panel");
   const npcCreatePanel = document.getElementById("npc-create-panel");
-  const npcTableBody = document.getElementById("npc-list");
+  const npcCardsGrid = document.getElementById("npc-cards-grid");
+  const emptyState = document.getElementById("empty-state");
+  const catFilterPills = document.getElementById("cat-filter-pills");
   const npcTypeSelect = document.getElementById("npc-type-select");
   const npcModel = document.getElementById("npc-model");
   const npcWeapon = document.getElementById("npc-weapon");
   const npcBehavior = document.getElementById("npc-behavior");
   const npcRadius = document.getElementById("npc-radius");
   const npcHeading = document.getElementById("npc-heading");
-  const npcCreateBtn = document.getElementById("npc-create-btn");
-  const npcSaveBtn = document.getElementById("npc-save-btn");
-  const closeBtn = document.getElementById("close-btn");
   const npcMovement = document.getElementById("npc-movement");
   const npcIgnoreGroups = document.getElementById("npc-ignore-groups");
   const npcIgnoreJobs = document.getElementById("npc-ignore-jobs");
+  const npcCreateBtn = document.getElementById("npc-create-btn");
+  const npcSaveBtn = document.getElementById("npc-save-btn");
+  const npcCancelBtn = document.getElementById("npc-cancel-edit-btn");
+  const closeBtn = document.getElementById("close-btn");
+  const formHeader = document.getElementById("form-header");
   const mousePickOverlay = document.getElementById("mouse-pick-overlay");
   const overlay = document.getElementById("overlay");
 
-  const tabs = [
-    { name: "NPC-Liste", icon: "fa-users", panel: npcListPanel },
-    { name: "NPC erstellen", icon: "fa-user-plus", panel: npcCreatePanel }
-  ];
+  const panels = { overview: overviewPanel, "npc-list": npcListPanel, "npc-create": npcCreatePanel };
 
+  /* ===== Utility ===== */
   function setNuiFocus(enable) {
     focusState = !!enable;
     if (typeof window.invokeNative === "function") {
@@ -82,47 +114,256 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  function renderTabs() {
-    tabBar.innerHTML = '';
-    tabs.forEach((tab, idx) => {
-      const btn = document.createElement('button');
-      btn.className = 'tab-btn' + (openTab === idx ? ' active' : '');
-      btn.innerHTML = `<i class="fa-solid ${tab.icon}"></i><span>${tab.name}</span>`;
-      btn.onclick = () => {
-        editNPC = null;
-        openTab = idx;
-        showPanel();
-        renderTabs();
-        updatePanelMode();
-      };
-      tabBar.appendChild(btn);
-    });
-    showPanel();
-    updatePanelMode();
+  function showToast(msg, type) {
+    type = type || "info";
+    const container = document.getElementById("toast-container");
+    const toast = document.createElement("div");
+    const icons = { success: "fa-circle-check", error: "fa-circle-xmark", info: "fa-circle-info" };
+    toast.className = "toast toast-" + type;
+    toast.innerHTML = '<i class="fa-solid ' + (icons[type] || icons.info) + ' toast-icon"></i><span class="toast-msg">' + msg + '</span>';
+    container.appendChild(toast);
+    setTimeout(function() {
+      toast.classList.add("removing");
+      setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
   }
 
-  function showPanel() {
-    tabs.forEach((tab, idx) => {
-      tab.panel.style.display = (idx === openTab) ? "block" : "none";
-    });
-    if (editNPC) openTab = 1;
-    updatePanelMode();
+  function getNpcCategory(npc) {
+    var t = npcTypes.find(function(tp) { return tp.model === npc.model; });
+    return t ? t.category : "civilian";
   }
 
-  function updatePanelMode() {
-    if (openTab === 1 && editNPC) {
-      npcCreateBtn.style.display = "none";
-      npcSaveBtn.style.display = "inline-block";
-    } else if (openTab === 1) {
-      npcCreateBtn.style.display = "inline-block";
-      npcSaveBtn.style.display = "none";
+  function escapeHtml(text) {
+    if (!text) return "";
+    var div = document.createElement("div");
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+  }
+
+  /* ===== Navigation ===== */
+  function switchPanel(panelId, category) {
+    activePanel = panelId;
+    activeCategory = category || null;
+    Object.keys(panels).forEach(function(key) {
+      panels[key].classList.toggle("active", key === panelId);
+    });
+    sidebarNav.querySelectorAll(".nav-item").forEach(function(btn) {
+      var btnPanel = btn.getAttribute("data-panel");
+      var btnCat = btn.getAttribute("data-category");
+      btn.classList.toggle("active", btnPanel === panelId && (btnCat || null) === activeCategory);
+    });
+    searchBox.style.display = panelId === "npc-list" ? "flex" : "none";
+    if (panelId === "overview") {
+      topbarTitle.textContent = "Übersicht";
+      renderOverview();
+    } else if (panelId === "npc-list") {
+      topbarTitle.textContent = activeCategory ? categoryMap[activeCategory].label : "Alle NPCs";
+      renderNpcCards();
+    } else if (panelId === "npc-create") {
+      topbarTitle.textContent = editNPC ? "NPC bearbeiten" : "NPC erstellen";
+      updateFormMode();
     }
   }
 
+  sidebarNav.addEventListener("click", function(e) {
+    var btn = e.target.closest(".nav-item");
+    if (!btn) return;
+    var panel = btn.getAttribute("data-panel");
+    var cat = btn.getAttribute("data-category");
+    if (panel === "npc-create") {
+      editNPC = null;
+      resetForm();
+    }
+    switchPanel(panel, cat);
+  });
+
+  /* ===== Stats & Overview ===== */
+  function updateStats() {
+    var total = npcList.length;
+    var aggressive = 0, wache = 0, passive = 0, neutral = 0, moving = 0;
+    var catCounts = { law: 0, criminal: 0, security: 0, military: 0, emergency: 0, civilian: 0 };
+
+    npcList.forEach(function(npc) {
+      if (npc.behavior === "Aggressiv") aggressive++;
+      else if (npc.behavior === "Wache") wache++;
+      else if (npc.behavior === "Passiv") passive++;
+      else if (npc.behavior === "Neutral") neutral++;
+      if (npc.movement == 1 || npc.movement === true) moving++;
+      var cat = getNpcCategory(npc);
+      if (catCounts[cat] !== undefined) catCounts[cat]++;
+    });
+
+    document.getElementById("stat-total").textContent = total;
+    document.getElementById("stat-aggressive").textContent = aggressive;
+    document.getElementById("stat-wache").textContent = wache;
+    document.getElementById("stat-passive").textContent = passive;
+    document.getElementById("stat-neutral").textContent = neutral;
+    document.getElementById("stat-moving").textContent = moving;
+
+    document.getElementById("badge-total").textContent = total;
+    Object.keys(catCounts).forEach(function(key) {
+      var badge = document.getElementById("badge-" + key);
+      if (badge) badge.textContent = catCounts[key];
+    });
+  }
+
+  function renderOverview() {
+    var container = document.getElementById("category-overview");
+    container.innerHTML = "";
+    var catCounts = {};
+    var catNpcs = {};
+    Object.keys(categoryMap).forEach(function(key) {
+      catCounts[key] = 0;
+      catNpcs[key] = [];
+    });
+    npcList.forEach(function(npc) {
+      var cat = getNpcCategory(npc);
+      if (catCounts[cat] !== undefined) {
+        catCounts[cat]++;
+        catNpcs[cat].push(npc.name);
+      }
+    });
+    Object.keys(categoryMap).forEach(function(key, idx) {
+      var info = categoryMap[key];
+      var card = document.createElement("div");
+      card.className = "cat-card";
+      card.style.animationDelay = (idx * 0.08) + "s";
+      var npcsHtml = catNpcs[key].slice(0, 8).map(function(n) {
+        return '<span class="cat-npc-tag">' + escapeHtml(n) + '</span>';
+      }).join("");
+      if (catNpcs[key].length > 8) npcsHtml += '<span class="cat-npc-tag">+' + (catNpcs[key].length - 8) + '</span>';
+      card.innerHTML =
+        '<div class="cat-card-header">' +
+          '<div class="cat-card-icon ' + info.color + '"><i class="fa-solid ' + info.icon + '"></i></div>' +
+          '<span class="cat-card-title">' + info.label + '</span>' +
+          '<span class="cat-card-count">' + catCounts[key] + ' NPCs</span>' +
+        '</div>' +
+        '<div class="cat-card-npcs">' + (npcsHtml || '<span class="cat-npc-tag">Keine NPCs</span>') + '</div>';
+      card.addEventListener("click", function() { switchPanel("npc-list", key); });
+      container.appendChild(card);
+    });
+  }
+
+  /* ===== NPC Cards Rendering ===== */
+  function getFilteredNpcs() {
+    var filtered = npcList;
+    if (activeCategory) {
+      filtered = filtered.filter(function(npc) { return getNpcCategory(npc) === activeCategory; });
+    }
+    if (searchQuery) {
+      var q = searchQuery.toLowerCase();
+      filtered = filtered.filter(function(npc) {
+        return (npc.name && npc.name.toLowerCase().indexOf(q) !== -1) ||
+               (npc.model && npc.model.toLowerCase().indexOf(q) !== -1) ||
+               (npc.behavior && npc.behavior.toLowerCase().indexOf(q) !== -1);
+      });
+    }
+    return filtered;
+  }
+
+  function renderFilterPills() {
+    catFilterPills.innerHTML = "";
+    var allPill = document.createElement("button");
+    allPill.className = "filter-pill" + (!activeCategory ? " active" : "");
+    allPill.textContent = "Alle";
+    allPill.addEventListener("click", function() {
+      activeCategory = null;
+      topbarTitle.textContent = "Alle NPCs";
+      renderNpcCards();
+      sidebarNav.querySelectorAll(".nav-item").forEach(function(btn) {
+        var p = btn.getAttribute("data-panel");
+        var c = btn.getAttribute("data-category");
+        btn.classList.toggle("active", p === "npc-list" && !c);
+      });
+    });
+    catFilterPills.appendChild(allPill);
+    Object.keys(categoryMap).forEach(function(key) {
+      var pill = document.createElement("button");
+      pill.className = "filter-pill" + (activeCategory === key ? " active" : "");
+      pill.innerHTML = '<i class="fa-solid ' + categoryMap[key].icon + '"></i> ' + categoryMap[key].label;
+      pill.addEventListener("click", function() {
+        activeCategory = key;
+        topbarTitle.textContent = categoryMap[key].label;
+        renderNpcCards();
+        sidebarNav.querySelectorAll(".nav-item").forEach(function(btn) {
+          var p = btn.getAttribute("data-panel");
+          var c = btn.getAttribute("data-category");
+          btn.classList.toggle("active", p === "npc-list" && c === key);
+        });
+      });
+      catFilterPills.appendChild(pill);
+    });
+  }
+
+  function renderNpcCards() {
+    renderFilterPills();
+    var filtered = getFilteredNpcs();
+    npcCardsGrid.innerHTML = "";
+    emptyState.style.display = filtered.length === 0 ? "block" : "none";
+
+    filtered.forEach(function(npc, idx) {
+      var cat = getNpcCategory(npc);
+      var catInfo = categoryMap[cat] || categoryMap.civilian;
+      var bIcon = behaviorIcons[npc.behavior] || "fa-question";
+      var wLabel = weaponLabels[npc.weapon] || (npc.weapon ? escapeHtml(npc.weapon) : "Keine");
+
+      var card = document.createElement("div");
+      card.className = "npc-card";
+      card.style.animationDelay = (idx * 0.05) + "s";
+      card.innerHTML =
+        '<div class="npc-card-top">' +
+          '<div class="npc-card-avatar behavior-' + escapeHtml(npc.behavior) + '"><i class="fa-solid ' + bIcon + '"></i></div>' +
+          '<div>' +
+            '<div class="npc-card-name">' + escapeHtml(npc.name) + '</div>' +
+            '<div class="npc-card-model">' + escapeHtml(npc.model) + '</div>' +
+          '</div>' +
+          '<span class="npc-card-badge behavior-' + escapeHtml(npc.behavior) + '">' + escapeHtml(npc.behavior) + '</span>' +
+        '</div>' +
+        '<div class="npc-card-details">' +
+          '<div class="npc-detail"><i class="fa-solid fa-gun"></i><span class="npc-detail-value">' + wLabel + '</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-circle-dot"></i><span class="npc-detail-value">' + npc.radius + 'm</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-compass"></i><span class="npc-detail-value">' + (typeof npc.heading !== "undefined" ? Number(npc.heading).toFixed(1) + '°' : '-') + '</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-person-running"></i><span class="npc-detail-value">' + (npc.movement == 1 || npc.movement === true ? "Ja" : "Nein") + '</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-location-dot"></i><span class="npc-detail-value">' + (typeof npc.x !== "undefined" ? Number(npc.x).toFixed(1) + ', ' + Number(npc.y).toFixed(1) + ', ' + Number(npc.z).toFixed(1) : '-') + '</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-tag"></i><span class="npc-detail-value">' + catInfo.label + '</span></div>' +
+        '</div>' +
+        (npc.ignoreGroups || npc.ignoreJobs ?
+          '<div class="npc-card-details" style="margin-bottom:8px">' +
+            (npc.ignoreGroups ? '<div class="npc-detail"><i class="fa-solid fa-users-slash"></i><span class="npc-detail-value">' + escapeHtml(npc.ignoreGroups) + '</span></div>' : '') +
+            (npc.ignoreJobs ? '<div class="npc-detail"><i class="fa-solid fa-briefcase"></i><span class="npc-detail-value">' + escapeHtml(npc.ignoreJobs) + '</span></div>' : '') +
+          '</div>' : '') +
+        '<div class="npc-card-actions">' +
+          '<button class="npc-action-btn btn-edit" data-id="' + npc.id + '"><i class="fa-solid fa-pen"></i> Bearbeiten</button>' +
+          '<button class="npc-action-btn btn-delete" data-id="' + npc.id + '"><i class="fa-solid fa-trash"></i> Löschen</button>' +
+          '<button class="npc-action-btn btn-teleport" data-id="' + npc.id + '"><i class="fa-solid fa-location-arrow"></i> Teleport</button>' +
+        '</div>';
+
+      npcCardsGrid.appendChild(card);
+    });
+
+    /* Event delegation for card actions */
+    npcCardsGrid.querySelectorAll(".btn-edit").forEach(function(btn) {
+      btn.addEventListener("click", function() { window.editNpc(Number(this.getAttribute("data-id"))); });
+    });
+    npcCardsGrid.querySelectorAll(".btn-delete").forEach(function(btn) {
+      btn.addEventListener("click", function() { window.deleteNpc(Number(this.getAttribute("data-id"))); });
+    });
+    npcCardsGrid.querySelectorAll(".btn-teleport").forEach(function(btn) {
+      btn.addEventListener("click", function() { window.teleportToNpc(Number(this.getAttribute("data-id"))); });
+    });
+  }
+
+  /* Search */
+  searchInput.addEventListener("input", function() {
+    searchQuery = this.value;
+    renderNpcCards();
+  });
+
+  /* ===== Form ===== */
   function fillWeaponSelect() {
     npcWeapon.innerHTML = "";
-    weaponList.forEach(w => {
-      const opt = document.createElement("option");
+    weaponList.forEach(function(w) {
+      var opt = document.createElement("option");
       opt.value = w.value;
       opt.textContent = w.label;
       npcWeapon.appendChild(opt);
@@ -130,8 +371,8 @@ document.addEventListener("DOMContentLoaded", function() {
   }
   function fillBehaviorSelect() {
     npcBehavior.innerHTML = "";
-    behaviorList.forEach(b => {
-      const opt = document.createElement("option");
+    behaviorList.forEach(function(b) {
+      var opt = document.createElement("option");
       opt.value = b.value;
       opt.textContent = b.label;
       npcBehavior.appendChild(opt);
@@ -139,108 +380,113 @@ document.addEventListener("DOMContentLoaded", function() {
   }
   function fillNpcTypeSelect() {
     npcTypeSelect.innerHTML = "";
-    npcTypes.forEach((npc, idx) => {
-      const opt = document.createElement("option");
+    npcTypes.forEach(function(npc, idx) {
+      var opt = document.createElement("option");
       opt.value = idx;
-      opt.textContent = npc.name;
+      opt.textContent = npc.name + " (" + categoryMap[npc.category].label + ")";
       npcTypeSelect.appendChild(opt);
     });
   }
 
-  function renderNpcTable() {
-    npcTableBody.innerHTML = "";
-    npcList.forEach((npc) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${npc.name}</td>
-        <td>${npc.model}</td>
-        <td>${npc.weapon ? npc.weapon : ""}</td>
-        <td>${npc.behavior}</td>
-        <td>${npc.radius}</td>
-        <td>${typeof npc.x !== "undefined" ? Number(npc.x).toFixed(2) : ""}</td>
-        <td>${typeof npc.y !== "undefined" ? Number(npc.y).toFixed(2) : ""}</td>
-        <td>${typeof npc.z !== "undefined" ? Number(npc.z).toFixed(2) : ""}</td>
-        <td>${typeof npc.heading !== "undefined" ? Number(npc.heading).toFixed(1) + "°" : "-"}</td>
-        <td>${npc.movement ? "Ja" : "Nein"}</td>
-        <td>${npc.ignoreGroups || ""}</td>
-        <td>${npc.ignoreJobs || ""}</td>
-        <td>
-          <button class="npc-btn" onclick="window.editNpc(${npc.id})">Bearbeiten</button>
-          <button class="npc-btn" onclick="window.deleteNpc(${npc.id})">Löschen</button>
-          <button class="npc-btn" onclick="window.teleportToNpc(${npc.id})">Teleport</button>
-        </td>
-      `;
-      npcTableBody.appendChild(tr);
-    });
+  function resetForm() {
+    editNPC = null;
+    if (npcTypes.length) {
+      npcTypeSelect.value = 0;
+      var npc = npcTypes[0];
+      npcModel.value = npc.model;
+      npcWeapon.value = npc.weapon || "";
+      npcBehavior.value = npc.behavior;
+      npcRadius.value = npc.radius;
+      npcHeading.value = "0";
+      npcMovement.checked = false;
+      npcIgnoreGroups.value = "";
+      npcIgnoreJobs.value = "";
+    }
+    updateFormMode();
   }
 
+  function updateFormMode() {
+    if (editNPC) {
+      formHeader.innerHTML = '<i class="fa-solid fa-pen-to-square"></i><span>NPC bearbeiten: ' + escapeHtml(editNPC.name) + '</span>';
+      npcCreateBtn.style.display = "none";
+      npcSaveBtn.style.display = "flex";
+      npcCancelBtn.style.display = "flex";
+    } else {
+      formHeader.innerHTML = '<i class="fa-solid fa-user-plus"></i><span>Neuen NPC erstellen</span>';
+      npcCreateBtn.style.display = "flex";
+      npcSaveBtn.style.display = "none";
+      npcCancelBtn.style.display = "none";
+    }
+  }
+
+  npcTypeSelect.addEventListener("change", function() {
+    var npc = npcTypes[this.value];
+    npcModel.value = npc.model;
+    npcWeapon.value = npc.weapon || "";
+    npcBehavior.value = npc.behavior;
+    npcRadius.value = npc.radius;
+    npcMovement.checked = false;
+    npcIgnoreGroups.value = "";
+    npcIgnoreJobs.value = "";
+  });
+
+  /* ===== CRUD Actions ===== */
   window.deleteNpc = function(id) {
     fetch('https://npc_dashboard/deleteNPC', {
       method: 'POST',
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id: id })
     })
-    .then(() => {
+    .then(function() {
+      showToast("NPC erfolgreich gelöscht", "success");
       fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
     })
-    .catch(err => {
-      alert("Fehler beim Löschen des NPCs.");
+    .catch(function(err) {
+      showToast("Fehler beim Löschen des NPCs", "error");
       console.error(err);
     });
-  }
+  };
 
   window.editNpc = function(id) {
-    editNPC = npcList.find(n => n.id === id);
+    editNPC = npcList.find(function(n) { return n.id === id; });
     if (editNPC) {
-      const typeIdx = npcTypes.findIndex(npc => npc.model === editNPC.model);
+      var typeIdx = npcTypes.findIndex(function(npc) { return npc.model === editNPC.model; });
       npcTypeSelect.value = typeIdx !== -1 ? typeIdx : 0;
       npcModel.value = (editNPC.model || "").trim();
       npcWeapon.value = editNPC.weapon || "";
       npcBehavior.value = editNPC.behavior || "Passiv";
       npcRadius.value = editNPC.radius;
       npcHeading.value = typeof editNPC.heading !== "undefined" ? editNPC.heading : 0.0;
-      npcMovement.checked = !!editNPC.movement;
+      npcMovement.checked = !!(editNPC.movement == 1 || editNPC.movement === true);
       npcIgnoreGroups.value = editNPC.ignoreGroups || "";
       npcIgnoreJobs.value = editNPC.ignoreJobs || "";
-      openTab = 1;
-      showPanel();
-      renderTabs();
+      switchPanel("npc-create");
       dashboardUI.style.display = "flex";
       setNuiFocus(true);
-      updatePanelMode();
+      updateFormMode();
+      showToast("NPC zum Bearbeiten geladen: " + escapeHtml(editNPC.name), "info");
     }
-  }
+  };
 
   window.teleportToNpc = function(id) {
     fetch('https://npc_dashboard/teleportToNPC', {
       method: 'POST',
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id: id })
     })
-    .catch(err => {
-      alert("Fehler beim Teleport.");
+    .then(function() {
+      showToast("Teleport wird ausgeführt...", "info");
+    })
+    .catch(function(err) {
+      showToast("Fehler beim Teleport", "error");
       console.error(err);
     });
-  }
+  };
 
-  npcTypeSelect.addEventListener("change", function() {
-    const npc = npcTypes[this.value];
-    npcModel.value = npc.model;
-    npcWeapon.value = npc.weapon || "";
-    npcBehavior.value = npc.behavior;
-    npcRadius.value = npc.radius;
-    npcModel.disabled = false;
-    npcWeapon.disabled = false;
-    npcBehavior.disabled = false;
-    npcRadius.disabled = false;
-    npcMovement.checked = false;
-    npcIgnoreGroups.value = "";
-    npcIgnoreJobs.value = "";
-  });
-
+  /* Create NPC */
   npcCreateBtn.addEventListener("click", function(e) {
     e.preventDefault();
     if (editNPC) return;
-    const typeIdx = npcTypeSelect.value;
-    const modelTrimmed = (npcModel.value || "").trim();
+    var typeIdx = npcTypeSelect.value;
+    var modelTrimmed = (npcModel.value || "").trim();
     createPending = {
       name: npcTypes[typeIdx].name,
       model: modelTrimmed,
@@ -257,45 +503,53 @@ document.addEventListener("DOMContentLoaded", function() {
     fetch('https://npc_dashboard/start_coord_pick', { method: 'POST' });
   });
 
-  if (npcSaveBtn) {
-    npcSaveBtn.addEventListener("click", function(e) {
-      e.preventDefault();
-      if (!editNPC) return;
-      const typeIdx = npcTypeSelect.value;
-      const modelTrimmed = (npcModel.value || "").trim();
-      const updatedNPC = {
-        id: editNPC.id,
-        name: npcTypes[typeIdx].name,
-        model: modelTrimmed,
-        weapon: npcWeapon.value,
-        behavior: npcBehavior.value,
-        radius: Number(npcRadius.value),
-        heading: Number(npcHeading.value),
-        movement: npcMovement.checked ? 1 : 0,
-        ignoreGroups: npcIgnoreGroups.value,
-        ignoreJobs: npcIgnoreJobs.value,
-        x: editNPC.x,
-        y: editNPC.y,
-        z: editNPC.z
-      };
-      fetch('https://npc_dashboard/updateNPC', {
-        method: 'POST',
-        body: JSON.stringify(updatedNPC)
-      })
-      .then(() => {
-        editNPC = null;
-        openTab = 0;
-        showPanel();
-        renderTabs();
-        fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
-      })
-      .catch(err => {
-        alert("Fehler beim Aktualisieren des NPCs.");
-        console.error(err);
-      });
+  /* Save NPC (edit) */
+  npcSaveBtn.addEventListener("click", function(e) {
+    e.preventDefault();
+    if (!editNPC) return;
+    var typeIdx = npcTypeSelect.value;
+    var modelTrimmed = (npcModel.value || "").trim();
+    var updatedNPC = {
+      id: editNPC.id,
+      name: npcTypes[typeIdx].name,
+      model: modelTrimmed,
+      weapon: npcWeapon.value,
+      behavior: npcBehavior.value,
+      radius: Number(npcRadius.value),
+      heading: Number(npcHeading.value),
+      movement: npcMovement.checked ? 1 : 0,
+      ignoreGroups: npcIgnoreGroups.value,
+      ignoreJobs: npcIgnoreJobs.value,
+      x: editNPC.x,
+      y: editNPC.y,
+      z: editNPC.z
+    };
+    fetch('https://npc_dashboard/updateNPC', {
+      method: 'POST',
+      body: JSON.stringify(updatedNPC)
+    })
+    .then(function() {
+      showToast("NPC erfolgreich aktualisiert", "success");
+      editNPC = null;
+      resetForm();
+      switchPanel("npc-list");
+      fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
+    })
+    .catch(function(err) {
+      showToast("Fehler beim Aktualisieren", "error");
+      console.error(err);
     });
-  }
+  });
 
+  /* Cancel edit */
+  npcCancelBtn.addEventListener("click", function(e) {
+    e.preventDefault();
+    editNPC = null;
+    resetForm();
+    switchPanel("npc-list");
+  });
+
+  /* Keyboard: Enter for coord pick */
   window.addEventListener('keydown', function(e) {
     if (mousePickOverlay.style.display === 'block' && e.key === "Enter") {
       createPending.x = createPending.x !== undefined ? Number(createPending.x) : 222.00;
@@ -307,35 +561,37 @@ document.addEventListener("DOMContentLoaded", function() {
         method: 'POST',
         body: JSON.stringify(createPending)
       })
-      .then(() => {
+      .then(function() {
         mousePickOverlay.style.display = "none";
         dashboardUI.style.display = "flex";
         setNuiFocus(true);
         createPending = null;
-        openTab = 0;
-        showPanel();
-        renderTabs();
+        showToast("NPC erfolgreich erstellt!", "success");
+        resetForm();
+        switchPanel("npc-list");
         fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
       })
-      .catch(err => {
-        alert("Fehler beim Hinzufügen des NPCs.");
+      .catch(function(err) {
+        showToast("Fehler beim Hinzufügen des NPCs", "error");
         console.error(err);
       });
     }
   });
 
-  overlay.addEventListener('mousedown', function(e){
+  /* Overlay mousedown cancel */
+  overlay.addEventListener('mousedown', function() {
     mousePickOverlay.style.display = 'none';
     setNuiFocus(true);
     dashboardUI.style.display = "flex";
   });
 
+  /* ===== NUI Messages ===== */
   window.addEventListener('message', function(event) {
     if (event.data.type === "open") {
       dashboardUI.style.display = "flex";
       setNuiFocus(true);
-      renderNpcTable();
-      updatePanelMode();
+      switchPanel("overview");
+      updateStats();
     }
     if (event.data.type === "close") {
       dashboardUI.style.display = "none";
@@ -344,8 +600,9 @@ document.addEventListener("DOMContentLoaded", function() {
     if (event.data.type === "refresh") {
       if (event.data.npcs) {
         npcList = event.data.npcs;
-        renderNpcTable();
-        updatePanelMode();
+        updateStats();
+        if (activePanel === "npc-list") renderNpcCards();
+        if (activePanel === "overview") renderOverview();
       }
     }
     if (event.data.type === "coord_selected") {
@@ -358,43 +615,35 @@ document.addEventListener("DOMContentLoaded", function() {
         method: 'POST',
         body: JSON.stringify(createPending)
       })
-      .then(() => {
+      .then(function() {
         mousePickOverlay.style.display = "none";
         dashboardUI.style.display = "flex";
         setNuiFocus(true);
         createPending = null;
-        openTab = 0;
-        showPanel();
-        renderTabs();
+        showToast("NPC erfolgreich platziert!", "success");
+        resetForm();
+        switchPanel("npc-list");
         fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
       })
-      .catch(err => {
-        alert("Fehler beim Hinzufügen des NPCs.");
+      .catch(function(err) {
+        showToast("Fehler beim Hinzufügen des NPCs", "error");
         console.error(err);
       });
     }
   });
 
+  /* Close button */
   closeBtn.addEventListener("click", function() {
     dashboardUI.style.display = "none";
     setNuiFocus(false);
     fetch('https://npc_dashboard/close', { method: 'POST' });
   });
 
+  /* ===== Init ===== */
   fillNpcTypeSelect();
   fillWeaponSelect();
   fillBehaviorSelect();
-  if(npcTypes.length) {
-    const npc = npcTypes[0];
-    npcModel.value = npc.model;
-    npcWeapon.value = npc.weapon || "";
-    npcBehavior.value = npc.behavior;
-    npcRadius.value = npc.radius;
-    npcMovement.checked = false;
-    npcIgnoreGroups.value = "";
-    npcIgnoreJobs.value = "";
-  }
-  renderTabs();
-  renderNpcTable();
-  updatePanelMode();
+  resetForm();
+  switchPanel("overview");
+  updateStats();
 });

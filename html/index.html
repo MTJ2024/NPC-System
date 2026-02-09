@@ -9,82 +9,211 @@
 </head>
 <body>
   <div id="npc-dashboard-ui" style="display:none;">
-    <div class="header">
-      <img src="img/logo.png" class="header-logo" alt="Logo"
-           onerror="this.onerror=null;this.src='https://via.placeholder.com/78x78?text=Logo';" />
-      <span id="header-icon"><i class="fa-solid fa-users"></i></span>
-      <span id="station-title" class="ui-effektrotgrau">
-        NPC-Dashboard
-        <span class="tablet-servername ui-effektrotgrau" id="header-servername">GreenZone 420</span>
-      </span>
-      <button class="close-btn ui-effektrotgrau" id="close-btn" title="Schließen"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <div class="tab-bar" id="tab-bar"></div>
-    <div class="body">
-      <!-- Panel: NPC-Liste -->
-      <div id="npc-list-panel" style="display:block;">
-        <table id="npcTable" class="npc-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Modell</th>
-              <th>Waffe</th>
-              <th>Verhalten</th>
-              <th>Radius</th>
-              <th>X</th>
-              <th>Y</th>
-              <th>Z</th>
-              <th>Sichtweise</th>
-              <th>Bewegung</th>
-              <th>Gruppen-Ausnahme</th>
-              <th>Jobs-Ausnahme</th>
-              <th>Aktionen</th>
-            </tr>
-          </thead>
-          <tbody id="npc-list"></tbody>
-        </table>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="img/logo.png" class="sidebar-logo" alt="Logo"
+             onerror="this.onerror=null;this.src='https://via.placeholder.com/56x56?text=GZ';" />
+        <div class="sidebar-brand">
+          <span class="brand-title">NPC Dashboard</span>
+          <span class="brand-server">GreenZone 420</span>
+        </div>
       </div>
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <button class="nav-item active" data-panel="overview">
+          <i class="fa-solid fa-chart-pie"></i><span>Übersicht</span>
+        </button>
+        <button class="nav-item" data-panel="npc-list">
+          <i class="fa-solid fa-users"></i><span>Alle NPCs</span>
+          <span class="nav-badge" id="badge-total">0</span>
+        </button>
+        <div class="nav-divider"><span>Kategorien</span></div>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="law">
+          <i class="fa-solid fa-shield-halved"></i><span>Strafverfolgung</span>
+          <span class="nav-badge cat-law" id="badge-law">0</span>
+        </button>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="criminal">
+          <i class="fa-solid fa-skull-crossbones"></i><span>Kriminelle</span>
+          <span class="nav-badge cat-criminal" id="badge-criminal">0</span>
+        </button>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="security">
+          <i class="fa-solid fa-user-shield"></i><span>Sicherheit</span>
+          <span class="nav-badge cat-security" id="badge-security">0</span>
+        </button>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="military">
+          <i class="fa-solid fa-jet-fighter"></i><span>Militär</span>
+          <span class="nav-badge cat-military" id="badge-military">0</span>
+        </button>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="emergency">
+          <i class="fa-solid fa-truck-medical"></i><span>Rettungsdienste</span>
+          <span class="nav-badge cat-emergency" id="badge-emergency">0</span>
+        </button>
+        <button class="nav-item nav-cat" data-panel="npc-list" data-category="civilian">
+          <i class="fa-solid fa-person-walking"></i><span>Zivilisten</span>
+          <span class="nav-badge cat-civilian" id="badge-civilian">0</span>
+        </button>
+        <div class="nav-divider"><span>Aktionen</span></div>
+        <button class="nav-item" data-panel="npc-create">
+          <i class="fa-solid fa-user-plus"></i><span>NPC erstellen</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="footer-copyright"><i class="fa-regular fa-copyright"></i></span>
+        <span class="footer-server">GreenZone420</span>
+        <span class="footer-divider">|</span>
+        <span class="footer-author">MTJ2024</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="topbar">
+        <div class="topbar-left">
+          <span class="topbar-title" id="topbar-title">Übersicht</span>
+        </div>
+        <div class="topbar-right">
+          <div class="search-box" id="search-box" style="display:none;">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="search-input" placeholder="NPC suchen...">
+          </div>
+          <button class="close-btn" id="close-btn" title="Schließen"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+
+      <!-- Panel: Übersicht -->
+      <div id="overview-panel" class="panel active">
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card stat-total">
+            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-total">0</span>
+              <span class="stat-label">Gesamt NPCs</span>
+            </div>
+          </div>
+          <div class="stat-card stat-aggressive">
+            <div class="stat-icon"><i class="fa-solid fa-skull"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-aggressive">0</span>
+              <span class="stat-label">Aggressiv</span>
+            </div>
+          </div>
+          <div class="stat-card stat-wache">
+            <div class="stat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-wache">0</span>
+              <span class="stat-label">Wachen</span>
+            </div>
+          </div>
+          <div class="stat-card stat-passive">
+            <div class="stat-icon"><i class="fa-solid fa-dove"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-passive">0</span>
+              <span class="stat-label">Passiv</span>
+            </div>
+          </div>
+          <div class="stat-card stat-neutral">
+            <div class="stat-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-neutral">0</span>
+              <span class="stat-label">Neutral</span>
+            </div>
+          </div>
+          <div class="stat-card stat-moving">
+            <div class="stat-icon"><i class="fa-solid fa-person-walking"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="stat-moving">0</span>
+              <span class="stat-label">Bewegend</span>
+            </div>
+          </div>
+        </div>
+        <div class="category-overview" id="category-overview"></div>
+      </div>
+
+      <!-- Panel: NPC-Liste -->
+      <div id="npc-list-panel" class="panel">
+        <div class="list-toolbar">
+          <div class="cat-filter-pills" id="cat-filter-pills"></div>
+        </div>
+        <div class="npc-cards-grid" id="npc-cards-grid"></div>
+        <div class="empty-state" id="empty-state" style="display:none;">
+          <i class="fa-solid fa-ghost"></i>
+          <p>Keine NPCs gefunden</p>
+        </div>
+      </div>
+
       <!-- Panel: NPC erstellen/bearbeiten -->
-      <div id="npc-create-panel" style="display:none;">
-        <form class="npc-create-form" id="npc-create-form" autocomplete="off">
-          <label for="npc-type-select">NPC-Typ</label>
-          <select id="npc-type-select"></select>
-          <label for="npc-model">Modell</label>
-          <input type="text" id="npc-model">
-          <label for="npc-weapon">Waffe</label>
-          <select id="npc-weapon"></select>
-          <label for="npc-behavior">Verhalten</label>
-          <select id="npc-behavior"></select>
-          <label for="npc-radius">Radius (Meter)</label>
-          <input type="number" id="npc-radius" min="1" max="100">
-          <label for="npc-heading">Sichtweise (Heading)</label>
-          <input type="number" id="npc-heading" step="0.1">
-          <label for="npc-movement"><input type="checkbox" id="npc-movement"> Bewegung</label>
-          <label for="npc-ignore-groups">Gruppen von Angriff ausnehmen (Komma getrennt):</label>
-          <input type="text" id="npc-ignore-groups" placeholder="z.B. admin,supporter">
-          <label for="npc-ignore-jobs">Jobs von Angriff ausnehmen (Komma getrennt):</label>
-          <input type="text" id="npc-ignore-jobs" placeholder="z.B. police,ambulance">
-          <div style="margin-top:10px;">
-            <button id="npc-create-btn" type="button">NPC erstellen (Koordinaten wählen)</button>
-            <button id="npc-save-btn" type="button" style="display:none;">NPC speichern</button>
+      <div id="npc-create-panel" class="panel">
+        <form class="npc-form" id="npc-create-form" autocomplete="off">
+          <div class="form-header" id="form-header">
+            <i class="fa-solid fa-user-plus"></i>
+            <span>Neuen NPC erstellen</span>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="npc-type-select"><i class="fa-solid fa-tag"></i> NPC-Typ</label>
+              <select id="npc-type-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="npc-model"><i class="fa-solid fa-cube"></i> Modell</label>
+              <input type="text" id="npc-model">
+            </div>
+            <div class="form-group">
+              <label for="npc-weapon"><i class="fa-solid fa-gun"></i> Waffe</label>
+              <select id="npc-weapon"></select>
+            </div>
+            <div class="form-group">
+              <label for="npc-behavior"><i class="fa-solid fa-brain"></i> Verhalten</label>
+              <select id="npc-behavior"></select>
+            </div>
+            <div class="form-group">
+              <label for="npc-radius"><i class="fa-solid fa-circle-dot"></i> Radius (Meter)</label>
+              <input type="number" id="npc-radius" min="1" max="100">
+            </div>
+            <div class="form-group">
+              <label for="npc-heading"><i class="fa-solid fa-compass"></i> Sichtweise (Heading)</label>
+              <input type="number" id="npc-heading" step="0.1">
+            </div>
+            <div class="form-group form-full">
+              <label class="checkbox-label">
+                <input type="checkbox" id="npc-movement">
+                <span class="checkmark"></span>
+                <i class="fa-solid fa-person-running"></i> Bewegung aktivieren
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="npc-ignore-groups"><i class="fa-solid fa-users-slash"></i> Gruppen-Ausnahmen</label>
+              <input type="text" id="npc-ignore-groups" placeholder="z.B. admin,supporter">
+            </div>
+            <div class="form-group">
+              <label for="npc-ignore-jobs"><i class="fa-solid fa-briefcase"></i> Job-Ausnahmen</label>
+              <input type="text" id="npc-ignore-jobs" placeholder="z.B. police,ambulance">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="npc-create-btn" type="button" class="btn btn-primary">
+              <i class="fa-solid fa-location-dot"></i> NPC erstellen (Koordinaten wählen)
+            </button>
+            <button id="npc-save-btn" type="button" class="btn btn-success" style="display:none;">
+              <i class="fa-solid fa-floppy-disk"></i> NPC speichern
+            </button>
+            <button id="npc-cancel-edit-btn" type="button" class="btn btn-secondary" style="display:none;">
+              <i class="fa-solid fa-ban"></i> Abbrechen
+            </button>
           </div>
         </form>
       </div>
-    </div>
-    <div class="dashboard-footer">
-      <span class="footer-copyright">
-        <i class="fa-regular fa-copyright"></i>
-      </span>
-      <span class="footer-server">GreenZone420</span>
-      <span class="footer-divider">|</span>
-      <span class="footer-author">Autor: MTJ2024</span>
-    </div>
+    </main>
   </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
   <!-- Mouse-Pick Overlay -->
   <div id="mouse-pick-overlay" style="display:none;">
     <div id="overlay"></div>
-    <div id="helptext">Gehe an die gewünschte Stelle und drücke ENTER!</div>
+    <div id="helptext"><i class="fa-solid fa-location-crosshairs"></i> Gehe an die gewünschte Stelle und drücke ENTER!</div>
   </div>
+
   <script>
     if (typeof GetParentResourceName === "function") {
       fetch(`https://${GetParentResourceName()}/htmlGeladen`, { method: 'POST' });
