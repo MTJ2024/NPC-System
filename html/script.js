@@ -133,6 +133,10 @@ document.addEventListener("DOMContentLoaded", function() {
     return t ? t.category : "civilian";
   }
 
+  function isMoving(npc) {
+    return npc.movement === 1 || npc.movement === true || npc.movement === "1";
+  }
+
   function escapeHtml(text) {
     if (!text) return "";
     var div = document.createElement("div");
@@ -188,7 +192,7 @@ document.addEventListener("DOMContentLoaded", function() {
       else if (npc.behavior === "Wache") wache++;
       else if (npc.behavior === "Passiv") passive++;
       else if (npc.behavior === "Neutral") neutral++;
-      if (npc.movement == 1 || npc.movement === true) moving++;
+      if (isMoving(npc)) moving++;
       var cat = getNpcCategory(npc);
       if (catCounts[cat] !== undefined) catCounts[cat]++;
     });
@@ -323,7 +327,7 @@ document.addEventListener("DOMContentLoaded", function() {
           '<div class="npc-detail"><i class="fa-solid fa-gun"></i><span class="npc-detail-value">' + wLabel + '</span></div>' +
           '<div class="npc-detail"><i class="fa-solid fa-circle-dot"></i><span class="npc-detail-value">' + npc.radius + 'm</span></div>' +
           '<div class="npc-detail"><i class="fa-solid fa-compass"></i><span class="npc-detail-value">' + (typeof npc.heading !== "undefined" ? Number(npc.heading).toFixed(1) + '°' : '-') + '</span></div>' +
-          '<div class="npc-detail"><i class="fa-solid fa-person-running"></i><span class="npc-detail-value">' + (npc.movement == 1 || npc.movement === true ? "Ja" : "Nein") + '</span></div>' +
+          '<div class="npc-detail"><i class="fa-solid fa-person-running"></i><span class="npc-detail-value">' + (isMoving(npc) ? "Ja" : "Nein") + '</span></div>' +
           '<div class="npc-detail"><i class="fa-solid fa-location-dot"></i><span class="npc-detail-value">' + (typeof npc.x !== "undefined" ? Number(npc.x).toFixed(1) + ', ' + Number(npc.y).toFixed(1) + ', ' + Number(npc.z).toFixed(1) : '-') + '</span></div>' +
           '<div class="npc-detail"><i class="fa-solid fa-tag"></i><span class="npc-detail-value">' + catInfo.label + '</span></div>' +
         '</div>' +
@@ -456,7 +460,7 @@ document.addEventListener("DOMContentLoaded", function() {
       npcBehavior.value = editNPC.behavior || "Passiv";
       npcRadius.value = editNPC.radius;
       npcHeading.value = typeof editNPC.heading !== "undefined" ? editNPC.heading : 0.0;
-      npcMovement.checked = !!(editNPC.movement == 1 || editNPC.movement === true);
+      npcMovement.checked = isMoving(editNPC);
       npcIgnoreGroups.value = editNPC.ignoreGroups || "";
       npcIgnoreJobs.value = editNPC.ignoreJobs || "";
       switchPanel("npc-create");
