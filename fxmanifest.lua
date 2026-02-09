@@ -6,7 +6,7 @@ description 'NPC-Management Dashboard für ESX (GreenZone420)'
 version '1.0.0'
 
 dependency 'es_extended'
-dependency 'mysql-async'
+dependency 'oxmysql'
 
 client_scripts {
     'config/config.lua',       -- ZUERST die config laden!
@@ -14,7 +14,7 @@ client_scripts {
 }
 
 server_scripts {
-    '@mysql-async/lib/MySQL.lua',
+    '@oxmysql/lib/MySQL.lua',
     'server/server.lua'
 }
 

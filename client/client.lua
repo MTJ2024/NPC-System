@@ -15,7 +15,16 @@ local function getNpcConfig(npc, key)
     if npc and npc.id and Config.SpecialNpcs and Config.SpecialNpcs[npc.id] and Config.SpecialNpcs[npc.id][key] ~= nil then
         return Config.SpecialNpcs[npc.id][key]
     end
+    -- Map config keys that don't follow the Default... pattern
+    if key == "invincible" then
+        return Config.NPCInvincible
+    end
     return Config["Default" .. key:sub(1,1):upper() .. key:sub(2)]
+end
+
+-- Helper: check if movement is enabled (handles number, string, bool from DB/JSON)
+local function isMovementEnabled(npc)
+    return npc.movement == 1 or npc.movement == true or npc.movement == "1" or tonumber(npc.movement) == 1
 end
 
 local function npcIsAtOrigin(npc, ped)
@@ -46,10 +55,12 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
                     SetBlockingOfNonTemporaryEvents(ped, true)
                     PlaceObjectOnGroundProperly(ped)
                     SetEntityHealth(ped, getNpcConfig(npc, "health"))
-                    if (npc.weapon and npc.weapon ~= "" and npc.weapon ~= "None") or Config.DefaultWeapon then
-                        GiveWeaponToPed(ped, GetHashKey(npc.weapon or Config.DefaultWeapon), 999, false, true)
+                    -- Weapon: only give weapon if the NPC actually has one set
+                    local npcWeapon = npc.weapon
+                    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
+                        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
                     end
-                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible"))
+                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible") == true)
                     npcStatus[idx] = {
                         busy = false,
                         pursuing = false,
@@ -58,12 +69,13 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
                         dead = false,
                         respawnAt = 0
                     }
-                    if not (npc.movement == 1 or npc.movement == true) then
+                    if isMovementEnabled(npc) then
+                        FreezeEntityPosition(ped, false)
+                        TaskWanderStandard(ped, 10.0, 10)
+                    else
                         ClearPedTasksImmediately(ped)
                         TaskStandStill(ped, -1)
                         FreezeEntityPosition(ped, true)
-                    else
-                        FreezeEntityPosition(ped, false)
                     end
                     gespawnteNpcs[idx] = ped
                 end
@@ -107,16 +119,18 @@ Citizen.CreateThread(function()
                     SetBlockingOfNonTemporaryEvents(ped, true)
                     PlaceObjectOnGroundProperly(ped)
                     SetEntityHealth(ped, getNpcConfig(npc, "health"))
-                    if (npc.weapon and npc.weapon ~= "" and npc.weapon ~= "None") or Config.DefaultWeapon then
-                        GiveWeaponToPed(ped, GetHashKey(npc.weapon or Config.DefaultWeapon), 999, false, true)
+                    local npcWeapon = npc.weapon
+                    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
+                        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
                     end
-                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible"))
-                    if not (npc.movement == 1 or npc.movement == true) then
+                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible") == true)
+                    if isMovementEnabled(npc) then
+                        FreezeEntityPosition(ped, false)
+                        TaskWanderStandard(ped, 10.0, 10)
+                    else
                         ClearPedTasksImmediately(ped)
                         TaskStandStill(ped, -1)
                         FreezeEntityPosition(ped, true)
-                    else
-                        FreezeEntityPosition(ped, false)
                     end
                     gespawnteNpcs[idx] = ped
                 end
@@ -148,7 +162,7 @@ Citizen.CreateThread(function()
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
             local status = npcStatus[idx]
-            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and (npc.movement == 1 or npc.movement == true) then
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and isMovementEnabled(npc) then
                 local spawnCoords = vector3(npc.x, npc.y, npc.z)
                 local pedCoords = GetEntityCoords(ped)
                 local distanz = #(pedCoords - spawnCoords)
@@ -175,7 +189,7 @@ Citizen.CreateThread(function()
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
             local status = npcStatus[idx]
-            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and not (npc.movement == 1 or npc.movement == true) then
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and not isMovementEnabled(npc) then
                 local origin = status.origin or vector3(npc.x, npc.y, npc.z)
                 local pedCoords = GetEntityCoords(ped)
                 local dist_to_origin = #(pedCoords - origin)
@@ -259,6 +273,10 @@ RegisterNUICallback("addNPC", function(data, cb)
     if type(data.behavior) == "number" then
         data.behavior = tostring(data.behavior)
     end
+    -- Ensure movement is a number (JS sends 0/1 but ensure it)
+    data.movement = tonumber(data.movement) or 0
+    -- Ensure radius is a number
+    data.radius = tonumber(data.radius) or 10
     TriggerServerEvent("npc_dashboard:addNPC", data)
     cb("ok")
 end)
@@ -267,6 +285,12 @@ RegisterNUICallback("updateNPC", function(data, cb)
     if type(data.behavior) == "number" then
         data.behavior = tostring(data.behavior)
     end
+    -- Ensure movement is a number
+    data.movement = tonumber(data.movement) or 0
+    -- Ensure radius is a number
+    data.radius = tonumber(data.radius) or 10
+    -- Ensure heading is a number
+    data.heading = tonumber(data.heading) or 0.0
     TriggerServerEvent("npc_dashboard:updateNPC", data)
     cb("ok")
 end)

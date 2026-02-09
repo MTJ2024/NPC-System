@@ -117,15 +117,23 @@ RegisterNetEvent("npc_dashboard:addNPC")
 AddEventHandler("npc_dashboard:addNPC", function(data)
     local src = source
     if not isAdmin(src) then return end
-    if not data or not isAllowedModel(data.model) or not isAllowedWeapon(data.weapon) then return end
-    if npcExists(data.model, data.x, data.y, data.z) then return end
+    if not data or not data.model or not isAllowedModel(data.model) then return end
+    local weapon = data.weapon or ""
+    if not isAllowedWeapon(weapon) then return end
+    local x = tonumber(data.x)
+    local y = tonumber(data.y)
+    local z = tonumber(data.z)
+    if not x or not y or not z then return end
+    if npcExists(data.model, x, y, z) then return end
     exports.oxmysql:execute([[
         INSERT INTO npc_dashboard_npcs 
         (name, model, weapon, behavior, radius, x, y, z, heading, violent, movement, ignoreGroups, ignoreJobs)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]], {
-        data.name, data.model, data.weapon, data.behavior, data.radius or 10, data.x, data.y, data.z, data.heading or 0.0,
-        data.violent or 0, data.movement or 0, data.ignoreGroups or '', data.ignoreJobs or ''
+        data.name or "NPC", data.model, weapon, data.behavior or "Passiv",
+        tonumber(data.radius) or 10, x, y, z, tonumber(data.heading) or 0.0,
+        tonumber(data.violent) or 0, tonumber(data.movement) or 0,
+        data.ignoreGroups or '', data.ignoreJobs or ''
     }, function()
         ladeAlleNpcs()
     end)
@@ -135,14 +143,18 @@ RegisterNetEvent("npc_dashboard:updateNPC")
 AddEventHandler("npc_dashboard:updateNPC", function(data)
     local src = source
     if not isAdmin(src) then return end
-    if not data or not isAllowedModel(data.model) or not isAllowedWeapon(data.weapon) then return end
+    if not data or not data.model or not data.id or not isAllowedModel(data.model) then return end
+    local weapon = data.weapon or ""
+    if not isAllowedWeapon(weapon) then return end
     exports.oxmysql:execute([[
         UPDATE npc_dashboard_npcs SET
         name = ?, model = ?, weapon = ?, behavior = ?, radius = ?, x = ?, y = ?, z = ?, heading = ?, violent = ?, movement = ?, ignoreGroups = ?, ignoreJobs = ?
         WHERE id = ?
     ]], {
-        data.name, data.model, data.weapon, data.behavior, data.radius or 10, data.x, data.y, data.z, data.heading or 0.0,
-        data.violent or 0, data.movement or 0, data.ignoreGroups or '', data.ignoreJobs or '', data.id
+        data.name or "NPC", data.model, weapon, data.behavior or "Passiv",
+        tonumber(data.radius) or 10, tonumber(data.x) or 0, tonumber(data.y) or 0, tonumber(data.z) or 0,
+        tonumber(data.heading) or 0.0, tonumber(data.violent) or 0, tonumber(data.movement) or 0,
+        data.ignoreGroups or '', data.ignoreJobs or '', data.id
     }, function()
         ladeAlleNpcs()
     end)
