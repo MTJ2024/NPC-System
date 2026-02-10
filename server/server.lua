@@ -1,5 +1,12 @@
 ESX = exports["es_extended"]:getSharedObject()
 
+-- Debug logging helper
+local function debugLog(msg)
+    print("[NPC-SERVER-DEBUG] " .. tostring(msg))
+end
+
+debugLog("NPC Dashboard Server starting...")
+
 -- Nur diese Typen sind erlaubt! (inkl. Army)
 local npcTypes = {
     { name = "Polizist", model = "s_m_y_cop_01", weapon = "WEAPON_PISTOL", behavior = "Wache", radius = 15 },
@@ -72,13 +79,16 @@ AddEventHandler("npc_dashboard:htmlGeladen", function()
 end)
 
 local function ladeAlleNpcs(callback)
+    debugLog("Loading all NPCs from database...")
     exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs', {}, function(npcs)
         local placedNpcs = npcs or {}
+        debugLog("Loaded " .. #placedNpcs .. " NPCs from database")
         if callback then callback(placedNpcs) end
         -- Update the UI list for all clients
         TriggerClientEvent("npc_dashboard:updateNPCList", -1, placedNpcs)
         -- Also sync/spawn the actual NPC peds in-game for all clients
         TriggerClientEvent("npc_dashboard:syncAllNpcs", -1, placedNpcs)
+        debugLog("Broadcasted NPCs to all clients")
     end)
 end
 
@@ -102,11 +112,15 @@ end)
 AddEventHandler('onResourceStart', function(resourceName)
     if resourceName == GetCurrentResourceName() then
         serverGeladen = true
+        debugLog("Resource started, loading NPCs from database...")
         ladeAlleNpcs(function(npcs)
             Citizen.CreateThread(function()
                 Citizen.Wait(3000)
                 if type(npcs) == "table" and #npcs > 0 then
+                    debugLog("Broadcasting " .. #npcs .. " NPCs to all clients after 3s delay")
                     TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
+                else
+                    debugLog("No NPCs found in database")
                 end
             end)
         end)
@@ -116,15 +130,33 @@ end)
 RegisterNetEvent("npc_dashboard:addNPC")
 AddEventHandler("npc_dashboard:addNPC", function(data)
     local src = source
-    if not isAdmin(src) then return end
-    if not data or not data.model or not isAllowedModel(data.model) then return end
+    debugLog("addNPC called by player " .. src)
+    if not isAdmin(src) then 
+        debugLog("  DENIED: Player is not admin")
+        return 
+    end
+    if not data or not data.model or not isAllowedModel(data.model) then 
+        debugLog("  DENIED: Invalid model or data")
+        return 
+    end
     local weapon = data.weapon or ""
-    if not isAllowedWeapon(weapon) then return end
+    if not isAllowedWeapon(weapon) then 
+        debugLog("  DENIED: Invalid weapon")
+        return 
+    end
     local x = tonumber(data.x)
     local y = tonumber(data.y)
     local z = tonumber(data.z)
-    if not x or not y or not z then return end
-    if npcExists(data.model, x, y, z) then return end
+    if not x or not y or not z then 
+        debugLog("  DENIED: Invalid coordinates")
+        return 
+    end
+    if npcExists(data.model, x, y, z) then 
+        debugLog("  DENIED: NPC already exists at this location")
+        return 
+    end
+    
+    debugLog("  Adding NPC: " .. tostring(data.name or "NPC") .. " (" .. data.model .. ") at " .. x .. "," .. y .. "," .. z)
     exports.oxmysql:execute([[
         INSERT INTO npc_dashboard_npcs 
         (name, model, weapon, behavior, radius, x, y, z, heading, violent, movement, ignoreGroups, ignoreJobs)
@@ -135,6 +167,7 @@ AddEventHandler("npc_dashboard:addNPC", function(data)
         tonumber(data.violent) or 0, tonumber(data.movement) or 0,
         data.ignoreGroups or '', data.ignoreJobs or ''
     }, function()
+        debugLog("  NPC added successfully, reloading all NPCs")
         ladeAlleNpcs()
     end)
 end)
@@ -142,14 +175,29 @@ end)
 RegisterNetEvent("npc_dashboard:updateNPC")
 AddEventHandler("npc_dashboard:updateNPC", function(data)
     local src = source
-    if not isAdmin(src) then return end
-    if not data or not data.model or not data.id or not isAllowedModel(data.model) then return end
+    debugLog("updateNPC called by player " .. src)
+    if not isAdmin(src) then 
+        debugLog("  DENIED: Player is not admin")
+        return 
+    end
+    if not data or not data.model or not data.id or not isAllowedModel(data.model) then 
+        debugLog("  DENIED: Invalid model, data, or missing ID")
+        return 
+    end
     local weapon = data.weapon or ""
-    if not isAllowedWeapon(weapon) then return end
+    if not isAllowedWeapon(weapon) then 
+        debugLog("  DENIED: Invalid weapon")
+        return 
+    end
     local x = tonumber(data.x)
     local y = tonumber(data.y)
     local z = tonumber(data.z)
-    if not x or not y or not z then return end
+    if not x or not y or not z then 
+        debugLog("  DENIED: Invalid coordinates")
+        return 
+    end
+    
+    debugLog("  Updating NPC ID " .. data.id .. ": " .. tostring(data.name or "NPC") .. " (" .. data.model .. ")")
     exports.oxmysql:execute([[
         UPDATE npc_dashboard_npcs SET
         name = ?, model = ?, weapon = ?, behavior = ?, radius = ?, x = ?, y = ?, z = ?, heading = ?, violent = ?, movement = ?, ignoreGroups = ?, ignoreJobs = ?
@@ -160,6 +208,7 @@ AddEventHandler("npc_dashboard:updateNPC", function(data)
         tonumber(data.heading) or 0.0, tonumber(data.violent) or 0, tonumber(data.movement) or 0,
         data.ignoreGroups or '', data.ignoreJobs or '', data.id
     }, function()
+        debugLog("  NPC updated successfully, reloading all NPCs")
         ladeAlleNpcs()
     end)
 end)
@@ -167,8 +216,13 @@ end)
 RegisterNetEvent("npc_dashboard:deleteNPC")
 AddEventHandler("npc_dashboard:deleteNPC", function(id)
     local src = source
-    if not isAdmin(src) then return end
+    debugLog("deleteNPC called by player " .. src .. " for NPC ID " .. tostring(id))
+    if not isAdmin(src) then 
+        debugLog("  DENIED: Player is not admin")
+        return 
+    end
     exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs WHERE id = ?', {id}, function()
+        debugLog("  NPC deleted successfully, reloading all NPCs")
         ladeAlleNpcs()
     end)
 end)

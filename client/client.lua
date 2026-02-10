@@ -532,10 +532,12 @@ end)
 
 RegisterCommand("npcdashboard", function()
     if not istDashboardOffen then
+        debugLog("Opening NPC Dashboard")
         istDashboardOffen = true
         SetNuiFocus(true, true)
         SendNUIMessage({ type = "open" })
         ESX.TriggerServerCallback('npc_dashboard:getNPCList', function(data)
+            debugLog("Received " .. #(data or {}) .. " NPCs from server for dashboard")
             SendNUIMessage({ type = "refresh", npcs = data or {} })
         end)
     end
