@@ -246,7 +246,7 @@ end)
 local function isPlayerArmed()
     local playerPed = PlayerPedId()
     local weaponHash = GetSelectedPedWeapon(playerPed)
-    -- Unarmed is hash 2725352035
+    -- Check if player has any weapon other than fists/unarmed (hash 2725352035 or GetHashKey("WEAPON_UNARMED"))
     return weaponHash ~= GetHashKey("WEAPON_UNARMED")
 end
 
@@ -490,10 +490,23 @@ Citizen.CreateThread(function()
                     status.pursuing = false
                     ClearPedTasksImmediately(ped)
                     TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
-                    Citizen.Wait(5000) -- Wait for NPC to get back
-                    if DoesEntityExist(ped) then
-                        FreezeEntityPosition(ped, true)
-                    end
+                    -- Give NPC time to return, then check and freeze
+                    Citizen.Wait(100)
+                    Citizen.CreateThread(function()
+                        local startTime = GetGameTimer()
+                        while DoesEntityExist(ped) and (GetGameTimer() - startTime) < 10000 do
+                            local currentDist = #(GetEntityCoords(ped) - origin)
+                            if currentDist < 2.0 then
+                                -- Close enough, freeze them
+                                ClearPedTasksImmediately(ped)
+                                TaskStandStill(ped, -1)
+                                FreezeEntityPosition(ped, true)
+                                debugLog("  NPC returned to origin and frozen")
+                                break
+                            end
+                            Citizen.Wait(500)
+                        end
+                    end)
                 end
             end
         end

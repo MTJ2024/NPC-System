@@ -25,7 +25,8 @@ Config.NPCInvincible = false
 Config.DefaultWeapon = "WEAPON_PISTOL"
 
 -- Aggro durch Wanted-Level ab wieviel Sternen? (0 = auch schon bei 1 Stern)
-Config.AggroWantedMin = 1
+-- NOTE: Currently not implemented - wanted level system disabled in favor of behavior-specific combat
+-- Config.AggroWantedMin = 1
 
 -- Respawn-Logik:
 -- true = NPC wird NUR respawnt, wenn am Standort gestorben. false = immer nach DeadTimeout respawnen
