@@ -39,7 +39,7 @@ Config.SpecialNpcs = {
 }
 
 -- === Debug-Ausgaben aktivieren? ===
-Config.Debug = false
+Config.Debug = true
 
 -- === Sprach-Konfiguration ===
 Config.Locale = "de"

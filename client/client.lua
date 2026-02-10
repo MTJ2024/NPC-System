@@ -1,4 +1,4 @@
--- NPC Dashboard Client (Alarm: Alle Wachen/Aggressiv/Guard/Neutral NPCs agieren, sobald EINER angegriffen wird ODER du ein Wanted Level hast!)
+-- NPC Dashboard Client with proper behavior-specific combat logic
 -- KEIN dofile, KEIN require – Config kommt global durch fxmanifest.lua
 
 ESX = exports["es_extended"]:getSharedObject()
@@ -9,6 +9,13 @@ local gespawnteNpcs = {}
 local npcStatus = {}
 local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
+
+-- Debug logging helper
+local function debugLog(msg)
+    if Config and Config.Debug then
+        print("[NPC-DEBUG] " .. tostring(msg))
+    end
+end
 
 -- Spezialwerte aus Config holen
 local function getNpcConfig(npc, key)
@@ -33,8 +40,116 @@ local function npcIsAtOrigin(npc, ped)
     return #(coords - vector3(npc.x, npc.y, npc.z)) < (getNpcConfig(npc, "radius") * 1.2)
 end
 
+-- Helper: Get ground Z coordinate for proper placement
+local function getGroundZ(x, y, z)
+    local retval, groundZ = GetGroundZFor_3dCoord(x, y, z + 1000.0, false)
+    if retval then
+        return groundZ
+    end
+    return z
+end
+
+-- Helper: Setup NPC with proper ground placement and behavior
+local function setupNpcPed(ped, npc, idx)
+    if not DoesEntityExist(ped) then return false end
+    
+    debugLog("Setting up NPC: " .. tostring(npc.name or npc.model) .. " (Behavior: " .. tostring(npc.behavior) .. ")")
+    
+    SetEntityAsMissionEntity(ped, true, true)
+    SetPedKeepTask(ped, true)
+    
+    -- Get proper ground Z and place NPC
+    local groundZ = getGroundZ(npc.x, npc.y, npc.z)
+    SetEntityCoords(ped, npc.x, npc.y, groundZ, false, false, false, false)
+    SetEntityHeading(ped, npc.heading or 0.0)
+    
+    -- Wait a frame for physics to settle
+    Citizen.Wait(100)
+    
+    -- Set health and invincibility
+    SetEntityHealth(ped, getNpcConfig(npc, "health"))
+    SetEntityInvincible(ped, getNpcConfig(npc, "invincible") == true)
+    
+    -- Give weapon if configured
+    local npcWeapon = npc.weapon
+    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
+        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
+        debugLog("  Weapon given: " .. npcWeapon)
+    end
+    
+    -- Behavior-specific setup
+    local behavior = npc.behavior or "Passiv"
+    
+    if behavior == "Passiv" then
+        -- Passive NPCs block all events and never fight
+        SetBlockingOfNonTemporaryEvents(ped, true)
+        SetPedFleeAttributes(ped, 0, true) -- Can flee
+        debugLog("  Behavior: Passive (non-combat)")
+        
+    elseif behavior == "Neutral" then
+        -- Neutral NPCs can fight back when attacked but don't seek combat
+        SetBlockingOfNonTemporaryEvents(ped, false)
+        SetPedCombatAbility(ped, 1) -- Average combat ability
+        SetPedCombatRange(ped, 2) -- Medium range
+        SetPedFleeAttributes(ped, 0, false) -- Won't flee
+        debugLog("  Behavior: Neutral (defensive)")
+        
+    elseif behavior == "Wache" or behavior == "Guard" then
+        -- Guard NPCs actively defend and help allies
+        SetBlockingOfNonTemporaryEvents(ped, false)
+        SetPedCombatAbility(ped, 2) -- Professional
+        SetPedCombatRange(ped, 2) -- Medium range
+        SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
+        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedSeeingRange(ped, getNpcConfig(npc, "radius") * 1.5)
+        SetPedHearingRange(ped, getNpcConfig(npc, "radius") * 1.5)
+        debugLog("  Behavior: Guard (protective, will help allies)")
+        
+    elseif behavior == "Aggressiv" then
+        -- Aggressive NPCs attack on sight within radius
+        SetBlockingOfNonTemporaryEvents(ped, false)
+        SetPedCombatAbility(ped, 2) -- Professional
+        SetPedCombatRange(ped, 2) -- Medium range
+        SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
+        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedSeeingRange(ped, getNpcConfig(npc, "radius"))
+        SetPedHearingRange(ped, getNpcConfig(npc, "radius"))
+        debugLog("  Behavior: Aggressive (hostile)")
+    end
+    
+    -- Initialize status tracking
+    npcStatus[idx] = {
+        busy = false,
+        pursuing = false,
+        origin = vector3(npc.x, npc.y, groundZ),
+        deathTime = nil,
+        dead = false,
+        respawnAt = 0,
+        inCombat = false,
+        lastAttacker = nil
+    }
+    
+    -- Set initial movement behavior
+    if isMovementEnabled(npc) then
+        FreezeEntityPosition(ped, false)
+        TaskWanderStandard(ped, 10.0, 10)
+        debugLog("  Movement: Wandering")
+    else
+        ClearPedTasksImmediately(ped)
+        TaskStandStill(ped, -1)
+        FreezeEntityPosition(ped, true)
+        debugLog("  Movement: Stationary")
+    end
+    
+    return true
+end
+
 RegisterNetEvent("npc_dashboard:syncAllNpcs")
 AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
+    debugLog("Syncing all NPCs - Total: " .. #(npcList or {}))
+    
     for idx, ped in pairs(gespawnteNpcs) do
         if DoesEntityExist(ped) then DeleteEntity(ped) end
     end
@@ -46,42 +161,28 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
         if npc.x and npc.y and npc.z and npc.model then
             local modelHash = GetHashKey(npc.model)
             RequestModel(modelHash)
-            while not HasModelLoaded(modelHash) do Citizen.Wait(10) end
+            local timeout = 0
+            while not HasModelLoaded(modelHash) and timeout < 100 do 
+                Citizen.Wait(10)
+                timeout = timeout + 1
+            end
+            
             if HasModelLoaded(modelHash) then
                 local ped = CreatePed(4, modelHash, npc.x, npc.y, npc.z, npc.heading or 0.0, true, false)
-                if DoesEntityExist(ped) then
-                    SetEntityAsMissionEntity(ped, true, true)
-                    SetPedKeepTask(ped, true)
-                    SetBlockingOfNonTemporaryEvents(ped, true)
-                    PlaceObjectOnGroundProperly(ped)
-                    SetEntityHealth(ped, getNpcConfig(npc, "health"))
-                    -- Weapon: only give weapon if the NPC actually has one set
-                    local npcWeapon = npc.weapon
-                    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
-                        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
-                    end
-                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible") == true)
-                    npcStatus[idx] = {
-                        busy = false,
-                        pursuing = false,
-                        origin = vector3(npc.x, npc.y, npc.z),
-                        deathTime = nil,
-                        dead = false,
-                        respawnAt = 0
-                    }
-                    if isMovementEnabled(npc) then
-                        FreezeEntityPosition(ped, false)
-                        TaskWanderStandard(ped, 10.0, 10)
-                    else
-                        ClearPedTasksImmediately(ped)
-                        TaskStandStill(ped, -1)
-                        FreezeEntityPosition(ped, true)
-                    end
+                if setupNpcPed(ped, npc, idx) then
                     gespawnteNpcs[idx] = ped
+                    debugLog("NPC spawned successfully: " .. tostring(npc.name or npc.model))
+                else
+                    debugLog("Failed to setup NPC: " .. tostring(npc.name or npc.model))
+                    if DoesEntityExist(ped) then DeleteEntity(ped) end
                 end
+            else
+                debugLog("Failed to load model: " .. npc.model)
             end
         end
     end
+    
+    debugLog("Sync complete - Active NPCs: " .. #gespawnteNpcs)
 end)
 
 RegisterNetEvent("npc_dashboard:updateNPCList")
@@ -99,6 +200,9 @@ Citizen.CreateThread(function()
             if npc and status and DoesEntityExist(ped) and IsPedDeadOrDying(ped, true) and not status.dead then
                 status.dead = true
                 status.deathTime = GetGameTimer()
+                status.inCombat = false
+                status.pursuing = false
+                debugLog("NPC died: " .. tostring(npc.name or npc.model))
                 DeleteEntity(ped)
                 gespawnteNpcs[idx] = nil
             end
@@ -107,108 +211,289 @@ Citizen.CreateThread(function()
         for idx, npc in ipairs(AlleNPCsSpawnenLastList or {}) do
             local status = npcStatus[idx]
             if status and status.dead and not gespawnteNpcs[idx] and GetGameTimer() - (status.deathTime or 0) > Config.DeadTimeout then
+                debugLog("Respawning NPC: " .. tostring(npc.name or npc.model))
                 status.dead = false
                 status.deathTime = nil
+                status.inCombat = false
+                status.pursuing = false
+                
                 local modelHash = GetHashKey(npc.model)
                 RequestModel(modelHash)
-                while not HasModelLoaded(modelHash) do Citizen.Wait(10) end
-                local ped = CreatePed(4, modelHash, npc.x, npc.y, npc.z, npc.heading or 0.0, true, false)
-                if DoesEntityExist(ped) then
-                    SetEntityAsMissionEntity(ped, true, true)
-                    SetPedKeepTask(ped, true)
-                    SetBlockingOfNonTemporaryEvents(ped, true)
-                    PlaceObjectOnGroundProperly(ped)
-                    SetEntityHealth(ped, getNpcConfig(npc, "health"))
-                    local npcWeapon = npc.weapon
-                    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
-                        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
-                    end
-                    SetEntityInvincible(ped, getNpcConfig(npc, "invincible") == true)
-                    if isMovementEnabled(npc) then
-                        FreezeEntityPosition(ped, false)
-                        TaskWanderStandard(ped, 10.0, 10)
+                local timeout = 0
+                while not HasModelLoaded(modelHash) and timeout < 100 do 
+                    Citizen.Wait(10) 
+                    timeout = timeout + 1
+                end
+                
+                if HasModelLoaded(modelHash) then
+                    local ped = CreatePed(4, modelHash, npc.x, npc.y, npc.z, npc.heading or 0.0, true, false)
+                    if setupNpcPed(ped, npc, idx) then
+                        gespawnteNpcs[idx] = ped
+                        debugLog("NPC respawned successfully: " .. tostring(npc.name or npc.model))
                     else
-                        ClearPedTasksImmediately(ped)
-                        TaskStandStill(ped, -1)
-                        FreezeEntityPosition(ped, true)
+                        debugLog("Failed to respawn NPC: " .. tostring(npc.name or npc.model))
+                        if DoesEntityExist(ped) then DeleteEntity(ped) end
                     end
-                    gespawnteNpcs[idx] = ped
                 end
             end
         end
     end
 end)
 
-local function triggerAlarmAggro(spielerPed)
-    for otherIdx, otherPed in pairs(gespawnteNpcs) do
-        local otherNpc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[otherIdx]
-        if otherNpc and DoesEntityExist(otherPed) and not IsPedDeadOrDying(otherPed, true) then
-            if otherNpc.behavior == "Aggressiv" or otherNpc.behavior == "Wache" or otherNpc.behavior == "Guard" or otherNpc.behavior == "Neutral" then
-                FreezeEntityPosition(otherPed, false)
-                ClearPedTasksImmediately(otherPed)
-                TaskCombatPed(otherPed, spielerPed, 0, 16)
-                npcStatus[otherIdx].pursuing = true
-                ClearEntityLastDamageEntity(otherPed)
-            end
-        end
-    end
+-- NEW: Behavior-specific combat logic
+-- Guards help each other, Aggressive attack on sight, Neutral only when attacked, Passive flee
+
+local function isPlayerArmed()
+    local playerPed = PlayerPedId()
+    local weaponHash = GetSelectedPedWeapon(playerPed)
+    -- Unarmed is hash 2725352035
+    return weaponHash ~= GetHashKey("WEAPON_UNARMED")
 end
 
+local function getNearbyGuards(centerPed, radius)
+    local guards = {}
+    for idx, ped in pairs(gespawnteNpcs) do
+        local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
+        if npc and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+            if npc.behavior == "Wache" or npc.behavior == "Guard" then
+                local dist = #(GetEntityCoords(ped) - GetEntityCoords(centerPed))
+                if dist <= radius then
+                    table.insert(guards, {idx = idx, ped = ped, npc = npc})
+                end
+            end
+        end
+    end
+    return guards
+end
+
+-- Aggressive NPCs: Attack player on sight within radius
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(400)
-        local spielerPed = PlayerPedId()
-        local wantedLevel = GetPlayerWantedLevel(PlayerId())
+        Citizen.Wait(1000) -- Check every second
+        local playerPed = PlayerPedId()
+        local playerCoords = GetEntityCoords(playerPed)
+        
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
             local status = npcStatus[idx]
-            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and isMovementEnabled(npc) then
-                local spawnCoords = vector3(npc.x, npc.y, npc.z)
-                local pedCoords = GetEntityCoords(ped)
-                local distanz = #(pedCoords - spawnCoords)
-                local radius = getNpcConfig(npc, "radius")
-                if HasEntityBeenDamagedByEntity(ped, spielerPed, true) or wantedLevel > 0 then
-                    triggerAlarmAggro(spielerPed)
-                end
-                if not status.pursuing and distanz > radius * 1.05 then
-                    status.dead = true
-                    status.deathTime = GetGameTimer()
-                    DeleteEntity(ped)
-                    gespawnteNpcs[idx] = nil
+            
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                if npc.behavior == "Aggressiv" then
+                    local npcCoords = GetEntityCoords(ped)
+                    local distToPlayer = #(npcCoords - playerCoords)
+                    local radius = getNpcConfig(npc, "radius")
+                    
+                    -- Attack if player is within radius and NPC is not already in combat
+                    if distToPlayer <= radius and not status.inCombat then
+                        if not istSpielerIgnoriert(npc) then
+                            debugLog("Aggressive NPC attacking player in radius: " .. tostring(npc.name or npc.model))
+                            FreezeEntityPosition(ped, false)
+                            ClearPedTasksImmediately(ped)
+                            TaskCombatPed(ped, playerPed, 0, 16)
+                            status.inCombat = true
+                            status.pursuing = true
+                            status.lastAttacker = playerPed
+                        end
+                    elseif distToPlayer > radius * 1.5 and status.inCombat then
+                        -- Return to patrol if player gets too far
+                        debugLog("Aggressive NPC ending combat - player too far")
+                        status.inCombat = false
+                        status.pursuing = false
+                        ClearPedTasksImmediately(ped)
+                        if isMovementEnabled(npc) then
+                            TaskWanderStandard(ped, 10.0, 10)
+                        else
+                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                        end
+                    end
                 end
             end
         end
     end
 end)
 
+-- Guard/Wache NPCs: Defend when attacked, see weapon, or ally is attacked
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(400)
-        local spielerPed = PlayerPedId()
-        local wantedLevel = GetPlayerWantedLevel(PlayerId())
+        Citizen.Wait(500)
+        local playerPed = PlayerPedId()
+        local playerCoords = GetEntityCoords(playerPed)
+        local playerArmed = isPlayerArmed()
+        
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
             local status = npcStatus[idx]
-            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and not isMovementEnabled(npc) then
-                local origin = status.origin or vector3(npc.x, npc.y, npc.z)
-                local pedCoords = GetEntityCoords(ped)
-                local dist_to_origin = #(pedCoords - origin)
-                local radius = getNpcConfig(npc, "radius")
-                local max_radius = 100.0
-                if HasEntityBeenDamagedByEntity(ped, spielerPed, true) or wantedLevel > 0 then
-                    triggerAlarmAggro(spielerPed)
-                else
-                    if not IsEntityPositionFrozen(ped) then
+            
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                if npc.behavior == "Wache" or npc.behavior == "Guard" then
+                    local npcCoords = GetEntityCoords(ped)
+                    local distToPlayer = #(npcCoords - playerCoords)
+                    local radius = getNpcConfig(npc, "radius")
+                    
+                    -- Check if this NPC or any nearby guard was attacked
+                    local shouldAttack = false
+                    local attackReason = ""
+                    
+                    -- 1. Direct attack on this NPC
+                    if HasEntityBeenDamagedByEntity(ped, playerPed, true) then
+                        shouldAttack = true
+                        attackReason = "was attacked"
+                        ClearEntityLastDamageEntity(ped)
+                    end
+                    
+                    -- 2. Player has weapon drawn nearby
+                    if not shouldAttack and playerArmed and distToPlayer <= radius * 0.7 then
+                        shouldAttack = true
+                        attackReason = "player armed nearby"
+                    end
+                    
+                    -- 3. Another guard nearby was attacked
+                    if not shouldAttack then
+                        local nearbyGuards = getNearbyGuards(ped, radius * 2)
+                        for _, guard in ipairs(nearbyGuards) do
+                            if HasEntityBeenDamagedByEntity(guard.ped, playerPed, true) then
+                                shouldAttack = true
+                                attackReason = "ally guard attacked"
+                                ClearEntityLastDamageEntity(guard.ped)
+                                break
+                            end
+                        end
+                    end
+                    
+                    if shouldAttack and not status.inCombat and not istSpielerIgnoriert(npc) then
+                        debugLog("Guard NPC engaging combat: " .. tostring(npc.name or npc.model) .. " - Reason: " .. attackReason)
+                        FreezeEntityPosition(ped, false)
                         ClearPedTasksImmediately(ped)
-                        TaskStandStill(ped, -1)
-                        FreezeEntityPosition(ped, true)
+                        TaskCombatPed(ped, playerPed, 0, 16)
+                        status.inCombat = true
+                        status.pursuing = true
+                        status.lastAttacker = playerPed
+                        
+                        -- Alert nearby guards to help
+                        local nearbyGuards = getNearbyGuards(ped, radius * 2)
+                        for _, guard in ipairs(nearbyGuards) do
+                            local guardStatus = npcStatus[guard.idx]
+                            if guardStatus and not guardStatus.inCombat then
+                                debugLog("  Nearby guard joining fight: " .. tostring(guard.npc.name or guard.npc.model))
+                                FreezeEntityPosition(guard.ped, false)
+                                ClearPedTasksImmediately(guard.ped)
+                                TaskCombatPed(guard.ped, playerPed, 0, 16)
+                                guardStatus.inCombat = true
+                                guardStatus.pursuing = true
+                                guardStatus.lastAttacker = playerPed
+                            end
+                        end
+                    elseif status.inCombat and distToPlayer > radius * 2 then
+                        -- Return to post if player gets too far
+                        debugLog("Guard NPC ending combat - player too far")
+                        status.inCombat = false
+                        status.pursuing = false
+                        ClearPedTasksImmediately(ped)
+                        if isMovementEnabled(npc) then
+                            TaskWanderStandard(ped, 10.0, 10)
+                        else
+                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                        end
                     end
                 end
-                if not status.pursuing and dist_to_origin > max_radius then
+            end
+        end
+    end
+end)
+
+-- Neutral NPCs: Only fight back when directly attacked
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(500)
+        local playerPed = PlayerPedId()
+        local playerCoords = GetEntityCoords(playerPed)
+        
+        for idx, ped in pairs(gespawnteNpcs) do
+            local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
+            local status = npcStatus[idx]
+            
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                if npc.behavior == "Neutral" then
+                    local npcCoords = GetEntityCoords(ped)
+                    local distToPlayer = #(npcCoords - playerCoords)
+                    local radius = getNpcConfig(npc, "radius")
+                    
+                    -- Only fight back if directly attacked
+                    if HasEntityBeenDamagedByEntity(ped, playerPed, true) and not status.inCombat then
+                        if not istSpielerIgnoriert(npc) then
+                            debugLog("Neutral NPC defending itself: " .. tostring(npc.name or npc.model))
+                            FreezeEntityPosition(ped, false)
+                            ClearPedTasksImmediately(ped)
+                            TaskCombatPed(ped, playerPed, 0, 16)
+                            status.inCombat = true
+                            status.pursuing = false -- Don't pursue, just defend
+                            status.lastAttacker = playerPed
+                        end
+                        ClearEntityLastDamageEntity(ped)
+                    elseif status.inCombat and distToPlayer > radius * 1.5 then
+                        -- Stop fighting if player gets away
+                        debugLog("Neutral NPC ending combat - player escaped")
+                        status.inCombat = false
+                        ClearPedTasksImmediately(ped)
+                        if isMovementEnabled(npc) then
+                            TaskWanderStandard(ped, 10.0, 10)
+                        else
+                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Movement and despawn logic for NPCs that wander too far
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(1000)
+        
+        for idx, ped in pairs(gespawnteNpcs) do
+            local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
+            local status = npcStatus[idx]
+            
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                local pedCoords = GetEntityCoords(ped)
+                local distToOrigin = #(pedCoords - origin)
+                local radius = getNpcConfig(npc, "radius")
+                
+                -- For moving NPCs, despawn if they wander too far
+                if isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 1.5 then
+                    debugLog("Moving NPC wandered too far, respawning: " .. tostring(npc.name or npc.model))
                     status.dead = true
                     status.deathTime = GetGameTimer()
                     DeleteEntity(ped)
                     gespawnteNpcs[idx] = nil
+                    
+                -- For stationary NPCs not in combat, keep them frozen at origin
+                elseif not isMovementEnabled(npc) and not status.inCombat then
+                    if not IsEntityPositionFrozen(ped) or distToOrigin > 2.0 then
+                        -- Return to origin if moved
+                        if distToOrigin > 5.0 then
+                            debugLog("Stationary NPC moved too far, teleporting back: " .. tostring(npc.name or npc.model))
+                            SetEntityCoords(ped, origin.x, origin.y, origin.z, false, false, false, false)
+                        end
+                        ClearPedTasksImmediately(ped)
+                        TaskStandStill(ped, -1)
+                        FreezeEntityPosition(ped, true)
+                    end
+                    
+                -- Return stationary NPCs to origin after combat ends
+                elseif not isMovementEnabled(npc) and status.inCombat and distToOrigin > radius * 2 then
+                    debugLog("Stationary NPC too far from origin, returning: " .. tostring(npc.name or npc.model))
+                    status.inCombat = false
+                    status.pursuing = false
+                    ClearPedTasksImmediately(ped)
+                    TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                    Citizen.Wait(5000) -- Wait for NPC to get back
+                    if DoesEntityExist(ped) then
+                        FreezeEntityPosition(ped, true)
+                    end
                 end
             end
         end
