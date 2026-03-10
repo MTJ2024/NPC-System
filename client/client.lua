@@ -578,7 +578,7 @@ end)
 Citizen.CreateThread(function()
     while true do
         if istDashboardOffen then
-            Citizen.Wait(50)
+            Citizen.Wait(0) -- Must run every frame to reliably disable ESC/pause menu
             DisableControlAction(0, 200, true) -- Disable ESC default (pause menu) while dashboard is open
             if IsDisabledControlJustPressed(0, 200) then
                 debugLog("ESC pressed (Lua) - closing NPC Dashboard")

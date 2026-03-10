@@ -1,8 +1,8 @@
 console.log("NPC Dashboard JS geladen!");
 
-if (typeof GetParentResourceName === "function") {
-  fetch(`https://${GetParentResourceName()}/htmlGeladen`, { method: 'POST' });
-}
+var resourceName = (typeof GetParentResourceName === "function") ? GetParentResourceName() : "npc_dashboard";
+
+fetch("https://" + resourceName + "/htmlGeladen", { method: "POST" });
 
 /* ===== NPC Type Definitions (synced with server) ===== */
 const npcTypes = [
@@ -436,13 +436,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /* ===== CRUD Actions ===== */
   window.deleteNpc = function(id) {
-    fetch('https://npc_dashboard/deleteNPC', {
+    fetch('https://' + resourceName + '/deleteNPC', {
       method: 'POST',
       body: JSON.stringify({ id: id })
     })
     .then(function() {
       showToast("NPC erfolgreich gelöscht", "success");
-      fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
+      fetch('https://' + resourceName + '/getNPCList', { method: 'POST' });
     })
     .catch(function(err) {
       showToast("Fehler beim Löschen des NPCs", "error");
@@ -472,7 +472,7 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   window.teleportToNpc = function(id) {
-    fetch('https://npc_dashboard/teleportToNPC', {
+    fetch('https://' + resourceName + '/teleportToNPC', {
       method: 'POST',
       body: JSON.stringify({ id: id })
     })
@@ -504,7 +504,7 @@ document.addEventListener("DOMContentLoaded", function() {
     dashboardUI.style.display = "none";
     mousePickOverlay.style.display = "block";
     setNuiFocus(false);
-    fetch('https://npc_dashboard/start_coord_pick', { method: 'POST' });
+    fetch('https://' + resourceName + '/start_coord_pick', { method: 'POST' });
   });
 
   /* Save NPC (edit) */
@@ -528,7 +528,7 @@ document.addEventListener("DOMContentLoaded", function() {
       y: editNPC.y,
       z: editNPC.z
     };
-    fetch('https://npc_dashboard/updateNPC', {
+    fetch('https://' + resourceName + '/updateNPC', {
       method: 'POST',
       body: JSON.stringify(updatedNPC)
     })
@@ -537,7 +537,7 @@ document.addEventListener("DOMContentLoaded", function() {
       editNPC = null;
       resetForm();
       switchPanel("npc-list");
-      fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
+      fetch('https://' + resourceName + '/getNPCList', { method: 'POST' });
     })
     .catch(function(err) {
       showToast("Fehler beim Aktualisieren", "error");
@@ -561,7 +561,7 @@ document.addEventListener("DOMContentLoaded", function() {
       createPending.z = createPending.z !== undefined ? Number(createPending.z) : 33.00;
       createPending.heading = createPending.heading !== undefined ? Number(createPending.heading) : 180.00;
       createPending.movement = createPending.movement ? 1 : 0;
-      fetch('https://npc_dashboard/addNPC', {
+      fetch('https://' + resourceName + '/addNPC', {
         method: 'POST',
         body: JSON.stringify(createPending)
       })
@@ -572,7 +572,7 @@ document.addEventListener("DOMContentLoaded", function() {
         showToast("NPC erfolgreich erstellt!", "success");
         resetForm();
         switchPanel("npc-list");
-        fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
+        fetch('https://' + resourceName + '/getNPCList', { method: 'POST' });
       })
       .catch(function(err) {
         showToast("Fehler beim Hinzufügen des NPCs", "error");
@@ -596,6 +596,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     if (event.data.type === "close") {
       dashboardUI.style.display = "none";
+      setNuiFocus(false);
     }
     if (event.data.type === "refresh") {
       if (event.data.npcs) {
@@ -612,7 +613,7 @@ document.addEventListener("DOMContentLoaded", function() {
       createPending.z = Number(event.data.coords.z);
       createPending.heading = Number(event.data.heading);
       createPending.movement = createPending.movement ? 1 : 0;
-      fetch('https://npc_dashboard/addNPC', {
+      fetch('https://' + resourceName + '/addNPC', {
         method: 'POST',
         body: JSON.stringify(createPending)
       })
@@ -623,7 +624,7 @@ document.addEventListener("DOMContentLoaded", function() {
         showToast("NPC erfolgreich platziert!", "success");
         resetForm();
         switchPanel("npc-list");
-        fetch('https://npc_dashboard/getNPCList', { method: 'POST' });
+        fetch('https://' + resourceName + '/getNPCList', { method: 'POST' });
       })
       .catch(function(err) {
         showToast("Fehler beim Hinzufügen des NPCs", "error");
@@ -632,13 +633,14 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Close dashboard - single handler, Lua manages focus */
+  /* Close dashboard - release focus immediately, then notify Lua */
   var isClosing = false;
   function closeDashboard() {
     if (isClosing) return;
     isClosing = true;
     dashboardUI.style.display = "none";
-    fetch('https://npc_dashboard/close', { method: 'POST' }).finally(function() {
+    setNuiFocus(false);
+    fetch('https://' + resourceName + '/close', { method: 'POST' }).finally(function() {
       isClosing = false;
     });
   }
