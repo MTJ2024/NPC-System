@@ -1,6 +1,6 @@
 console.log("NPC Dashboard JS geladen!");
 
-var resourceName = (typeof GetParentResourceName === "function") ? GetParentResourceName() : "npc_dashboard";
+const resourceName = (typeof GetParentResourceName === "function") ? GetParentResourceName() : "npc_dashboard";
 
 fetch("https://" + resourceName + "/htmlGeladen", { method: "POST" });
 

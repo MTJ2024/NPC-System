@@ -143,7 +143,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: #aaa;
+  color: #888;
 }
 
 /* Sidebar Footer */
@@ -218,7 +218,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   width: 200px;
   font-family: 'Inter', sans-serif;
 }
-.search-box input::placeholder { color: #aaa; }
+.search-box input::placeholder { color: #888; }
 .close-btn {
   background: #f0f0f4;
   border: 1px solid rgba(0,0,0,0.08);
@@ -566,7 +566,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 }
 .form-group select { cursor: pointer; }
 .form-group select option { background: #fff; color: #1a1a2e; }
-.form-group input::placeholder { color: #bbb; }
+.form-group input::placeholder { color: #999; }
 
 /* Checkbox */
 .checkbox-label {
