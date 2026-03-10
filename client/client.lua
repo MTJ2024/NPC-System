@@ -573,13 +573,15 @@ RegisterNUICallback("close", function(data, cb)
 end)
 
 -- ESC key monitoring: force-close dashboard if player presses ESC while it's open
+-- Note: When NUI has focus, the JS ESC handler fires first via the browser.
+-- This Lua handler is a safety net in case focus state gets out of sync.
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(0)
         if istDashboardOffen then
+            Citizen.Wait(50)
             DisableControlAction(0, 200, true) -- Disable ESC default (pause menu) while dashboard is open
             if IsDisabledControlJustPressed(0, 200) then
-                debugLog("ESC pressed - closing NPC Dashboard")
+                debugLog("ESC pressed (Lua) - closing NPC Dashboard")
                 istDashboardOffen = false
                 SetNuiFocus(false, false)
                 SendNUIMessage({ type = "close" })

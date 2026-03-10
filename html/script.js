@@ -633,9 +633,14 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   /* Close dashboard - single handler, Lua manages focus */
+  var isClosing = false;
   function closeDashboard() {
+    if (isClosing) return;
+    isClosing = true;
     dashboardUI.style.display = "none";
-    fetch('https://npc_dashboard/close', { method: 'POST' });
+    fetch('https://npc_dashboard/close', { method: 'POST' }).finally(function() {
+      isClosing = false;
+    });
   }
 
   /* Close button */
@@ -645,7 +650,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /* ESC key to close dashboard */
   window.addEventListener('keydown', function(e) {
-    if (e.key === "Escape" && dashboardUI.style.display !== "none") {
+    if (e.key === "Escape" && dashboardUI.style.display === "flex") {
       closeDashboard();
     }
   });
