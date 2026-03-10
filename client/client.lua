@@ -67,21 +67,26 @@ local function setupNpcPed(ped, npc, idx)
     
     -- Behavior-specific setup
     local behavior = npc.behavior or "Passiv"
+    local moving = isMovementEnabled(npc)
     
     if behavior == "Passiv" then
-        -- Passive NPCs block all events and never fight
-        SetBlockingOfNonTemporaryEvents(ped, true)
+        -- Passive NPCs never fight
+        -- Only block events for stationary NPCs; moving NPCs need navigation events
+        SetBlockingOfNonTemporaryEvents(ped, not moving)
         SetPedFleeAttributes(ped, 0, true) -- Can flee
-        debugLog("  Behavior: Passive (non-combat)")
+        SetPedCombatAbility(ped, 0)
+        SetPedCombatAttributes(ped, 46, false)
+        debugLog("  Behavior: Passive (non-combat, blocking=" .. tostring(not moving) .. ")")
         
     elseif behavior == "Neutral" then
         -- Neutral NPCs are non-violent - they don't fight and don't flee
-        SetBlockingOfNonTemporaryEvents(ped, true)
+        -- Only block events for stationary NPCs; moving NPCs need navigation events
+        SetBlockingOfNonTemporaryEvents(ped, not moving)
         SetPedCombatAbility(ped, 0) -- No combat
         SetPedCombatRange(ped, 0) -- No range
         SetPedFleeAttributes(ped, 0, false) -- Won't flee
         SetPedCombatAttributes(ped, 46, false)
-        debugLog("  Behavior: Neutral (non-violent, no combat)")
+        debugLog("  Behavior: Neutral (non-violent, blocking=" .. tostring(not moving) .. ")")
         
     elseif behavior == "Wache" or behavior == "Guard" then
         -- Guard NPCs actively defend and help allies
@@ -108,6 +113,12 @@ local function setupNpcPed(ped, npc, idx)
         debugLog("  Behavior: Aggressive (hostile)")
     end
     
+    -- Enable improved pathfinding for all NPCs (navigate around obstacles, use climbovers/ladders)
+    SetPedPathCanUseClimbovers(ped, true)
+    SetPedPathCanUseLadders(ped, true)
+    SetPedPathAvoidFire(ped, true)
+    SetPedConfigFlag(ped, 208, true)  -- CPED_CONFIG_FLAG_DisableShockingEvents: ignore shocking events but still navigate
+    
     -- Initialize status tracking
     npcStatus[idx] = {
         busy = false,
@@ -117,14 +128,17 @@ local function setupNpcPed(ped, npc, idx)
         dead = false,
         respawnAt = 0,
         inCombat = false,
-        lastAttacker = nil
+        lastAttacker = nil,
+        lastMoveCheck = 0,
+        lastMovePos = nil,
+        stuckCount = 0
     }
     
     -- Set initial movement behavior
-    if isMovementEnabled(npc) then
+    if moving then
         FreezeEntityPosition(ped, false)
         local radius = tonumber(getNpcConfig(npc, "radius")) or Config.DefaultRadius
-        TaskWanderInArea(ped, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), radius, 0, 0)
+        TaskWanderInArea(ped, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), radius, 2.0, 1.0)
         debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
     else
         ClearPedTasksImmediately(ped)
@@ -151,6 +165,18 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
         if npc.x and npc.y and npc.z and npc.model then
             local modelName = tostring(npc.model):gsub("^%s*(.-)%s*$", "%1")
             local modelHash = GetHashKey(modelName)
+            
+            if not IsModelValid(modelHash) then
+                print("[NPC-SPAWN] FAIL: Invalid model: " .. modelName .. " (hash=" .. tostring(modelHash) .. ")")
+                goto continueSpawn
+            end
+            
+            local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+            local heading = tonumber(npc.heading) or 0.0
+            
+            -- Load collision at spawn point so the ped doesn't fall through ground
+            RequestCollisionAtCoord(x, y, z)
+            
             RequestModel(modelHash)
             local timeout = 0
             while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
@@ -159,9 +185,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             end
             
             if HasModelLoaded(modelHash) then
-                local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
-                local heading = tonumber(npc.heading) or 0.0
-                local ped = CreatePed(4, modelHash, x, y, z, heading, false, true)
+                local ped = CreatePed(4, modelHash, x, y, z, heading, false, false)
                 if ped and ped ~= 0 and DoesEntityExist(ped) then
                     if setupNpcPed(ped, npc, idx) then
                         gespawnteNpcs[idx] = ped
@@ -177,6 +201,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             else
                 print("[NPC-SPAWN] FAIL: Model not loaded after 5s: " .. modelName .. " (hash=" .. tostring(modelHash) .. ")")
             end
+            ::continueSpawn::
         else
             print("[NPC-SPAWN] SKIP: NPC idx=" .. tostring(idx) .. " missing x/y/z/model")
         end
@@ -221,6 +246,18 @@ Citizen.CreateThread(function()
                 
                 local modelName = tostring(npc.model):gsub("^%s*(.-)%s*$", "%1")
                 local modelHash = GetHashKey(modelName)
+                
+                if not IsModelValid(modelHash) then
+                    print("[NPC-SPAWN] Respawn FAIL: Invalid model: " .. modelName)
+                    goto continueRespawn
+                end
+                
+                local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+                local heading = tonumber(npc.heading) or 0.0
+                
+                -- Load collision at respawn point
+                RequestCollisionAtCoord(x, y, z)
+                
                 RequestModel(modelHash)
                 local timeout = 0
                 while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
@@ -229,9 +266,7 @@ Citizen.CreateThread(function()
                 end
                 
                 if HasModelLoaded(modelHash) then
-                    local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
-                    local heading = tonumber(npc.heading) or 0.0
-                    local ped = CreatePed(4, modelHash, x, y, z, heading, false, true)
+                    local ped = CreatePed(4, modelHash, x, y, z, heading, false, false)
                     if ped and ped ~= 0 and DoesEntityExist(ped) then
                         if setupNpcPed(ped, npc, idx) then
                             gespawnteNpcs[idx] = ped
@@ -247,6 +282,7 @@ Citizen.CreateThread(function()
                 else
                     print("[NPC-SPAWN] Respawn FAIL: Model not loaded: " .. modelName)
                 end
+                ::continueRespawn::
             end
         end
     end
@@ -317,7 +353,7 @@ Citizen.CreateThread(function()
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
-                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
@@ -411,7 +447,7 @@ Citizen.CreateThread(function()
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
-                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
@@ -440,11 +476,12 @@ Citizen.CreateThread(function()
                         status.inCombat = false
                         status.pursuing = false
                         ClearPedTasksImmediately(ped)
-                        SetBlockingOfNonTemporaryEvents(ped, true)
+                        -- Only block events for stationary NPCs
+                        SetBlockingOfNonTemporaryEvents(ped, not isMovementEnabled(npc))
                         if isMovementEnabled(npc) then
                             local radius = getNpcConfig(npc, "radius")
                             local origin = status.origin or vector3(npc.x, npc.y, npc.z)
-                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                         else
                             TaskStandStill(ped, -1)
                             FreezeEntityPosition(ped, true)
@@ -477,7 +514,7 @@ Citizen.CreateThread(function()
                 if isMovementEnabled(npc) and not status.inCombat and distToOrigin > radius then
                     debugLog("Moving NPC exceeded radius, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
                     ClearPedTasksImmediately(ped)
-                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                     
                 -- For moving NPCs way too far, despawn and respawn
                 elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 3 then
@@ -526,6 +563,56 @@ Citizen.CreateThread(function()
                             Citizen.Wait(500)
                         end
                     end)
+                end
+            end
+        end
+    end
+end)
+
+-- Stuck detection: re-issue movement tasks when moving NPCs get stuck against walls/obstacles
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(2000) -- Check every 2 seconds
+        
+        for idx, ped in pairs(gespawnteNpcs) do
+            local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
+            local status = npcStatus[idx]
+            
+            if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                if isMovementEnabled(npc) and not status.inCombat then
+                    local pedCoords = GetEntityCoords(ped)
+                    local speed = GetEntitySpeed(ped)
+                    local now = GetGameTimer()
+                    
+                    -- Check if NPC is stuck (speed near 0 and has a previous position recorded)
+                    if status.lastMovePos then
+                        local movedDist = #(pedCoords - status.lastMovePos)
+                        local elapsed = now - (status.lastMoveCheck or 0)
+                        
+                        -- If NPC barely moved in the last check interval and speed is near 0
+                        if elapsed > 1500 and movedDist < 0.3 and speed < 0.2 then
+                            status.stuckCount = (status.stuckCount or 0) + 1
+                            
+                            -- After being stuck for 2 consecutive checks (~4 seconds), re-route
+                            if status.stuckCount >= 2 then
+                                local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                                local radius = getNpcConfig(npc, "radius")
+                                debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x)")
+                                ClearPedTasksImmediately(ped)
+                                -- Brief pause before new task so ped can reset navigation
+                                Citizen.Wait(100)
+                                if DoesEntityExist(ped) then
+                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                end
+                                status.stuckCount = 0
+                            end
+                        else
+                            status.stuckCount = 0
+                        end
+                    end
+                    
+                    status.lastMovePos = pedCoords
+                    status.lastMoveCheck = now
                 end
             end
         end
