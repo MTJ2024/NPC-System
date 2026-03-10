@@ -570,11 +570,12 @@ end)
 -- When player ped spawns (initial spawn + respawns), request NPC sync
 AddEventHandler('playerSpawned', function()
     debugLog("Player spawned, requesting NPC sync...")
-    Citizen.Wait(2000)
+    Citizen.Wait(2000) -- Wait for client scripts and streaming to fully initialize
     TriggerServerEvent("npc_dashboard:clientGeladen")
 end)
 
 -- Fallback: If no NPCs spawned after 10 seconds, request them explicitly
+-- This catches edge cases where all other sync mechanisms failed (e.g. race conditions on resource restart)
 Citizen.CreateThread(function()
     Citizen.Wait(10000)
     local activeCount = 0

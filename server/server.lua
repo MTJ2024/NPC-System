@@ -74,7 +74,7 @@ AddEventHandler("npc_dashboard:clientGeladen", function()
     clientGeladen = true
     debugLog("Client " .. tostring(src) .. " loaded, sending NPCs...")
     exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs', {}, function(npcs)
-        if src then
+        if GetPlayerName(src) then
             TriggerClientEvent("npc_dashboard:syncAllNpcs", src, npcs or {})
             TriggerClientEvent("npc_dashboard:updateNPCList", src, npcs or {})
             debugLog("Sent " .. #(npcs or {}) .. " NPCs to client " .. tostring(src))
