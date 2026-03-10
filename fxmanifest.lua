@@ -1,7 +1,7 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'Dein Name oder Team'
+author 'MTJ2024'
 description 'NPC-Management Dashboard für ESX (GreenZone420)'
 version '1.0.0'
 

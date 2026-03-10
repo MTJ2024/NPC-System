@@ -565,10 +565,29 @@ RegisterCommand("npcdashboard", function()
     end
 end)
 
-RegisterNUICallback("close", function()
+RegisterNUICallback("close", function(data, cb)
+    debugLog("Closing NPC Dashboard")
     istDashboardOffen = false
     SetNuiFocus(false, false)
-    SendNUIMessage({ type = "close" })
+    cb("ok")
+end)
+
+-- ESC key monitoring: force-close dashboard if player presses ESC while it's open
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(0)
+        if istDashboardOffen then
+            DisableControlAction(0, 200, true) -- Disable ESC default (pause menu) while dashboard is open
+            if IsDisabledControlJustPressed(0, 200) then
+                debugLog("ESC pressed - closing NPC Dashboard")
+                istDashboardOffen = false
+                SetNuiFocus(false, false)
+                SendNUIMessage({ type = "close" })
+            end
+        else
+            Citizen.Wait(200) -- Reduce CPU usage when dashboard is closed
+        end
+    end
 end)
 
 RegisterNUICallback("getNPCList", function(data, cb)

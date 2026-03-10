@@ -555,7 +555,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /* Keyboard: Enter for coord pick */
   window.addEventListener('keydown', function(e) {
-    if (mousePickOverlay.style.display === 'block' && e.key === "Enter") {
+    if (mousePickOverlay.style.display === 'block' && e.key === "Enter" && createPending) {
       createPending.x = createPending.x !== undefined ? Number(createPending.x) : 222.00;
       createPending.y = createPending.y !== undefined ? Number(createPending.y) : 111.00;
       createPending.z = createPending.z !== undefined ? Number(createPending.z) : 33.00;
@@ -568,7 +568,6 @@ document.addEventListener("DOMContentLoaded", function() {
       .then(function() {
         mousePickOverlay.style.display = "none";
         dashboardUI.style.display = "flex";
-        setNuiFocus(true);
         createPending = null;
         showToast("NPC erfolgreich erstellt!", "success");
         resetForm();
@@ -585,7 +584,6 @@ document.addEventListener("DOMContentLoaded", function() {
   /* Overlay mousedown cancel */
   overlay.addEventListener('mousedown', function() {
     mousePickOverlay.style.display = 'none';
-    setNuiFocus(true);
     dashboardUI.style.display = "flex";
   });
 
@@ -593,13 +591,11 @@ document.addEventListener("DOMContentLoaded", function() {
   window.addEventListener('message', function(event) {
     if (event.data.type === "open") {
       dashboardUI.style.display = "flex";
-      setNuiFocus(true);
       switchPanel("overview");
       updateStats();
     }
     if (event.data.type === "close") {
       dashboardUI.style.display = "none";
-      setNuiFocus(false);
     }
     if (event.data.type === "refresh") {
       if (event.data.npcs) {
@@ -610,6 +606,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     }
     if (event.data.type === "coord_selected") {
+      if (!createPending) return;
       createPending.x = Number(event.data.coords.x);
       createPending.y = Number(event.data.coords.y);
       createPending.z = Number(event.data.coords.z);
@@ -622,7 +619,6 @@ document.addEventListener("DOMContentLoaded", function() {
       .then(function() {
         mousePickOverlay.style.display = "none";
         dashboardUI.style.display = "flex";
-        setNuiFocus(true);
         createPending = null;
         showToast("NPC erfolgreich platziert!", "success");
         resetForm();
@@ -636,11 +632,22 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  /* Close dashboard - single handler, Lua manages focus */
+  function closeDashboard() {
+    dashboardUI.style.display = "none";
+    fetch('https://npc_dashboard/close', { method: 'POST' });
+  }
+
   /* Close button */
   closeBtn.addEventListener("click", function() {
-    dashboardUI.style.display = "none";
-    setNuiFocus(false);
-    fetch('https://npc_dashboard/close', { method: 'POST' });
+    closeDashboard();
+  });
+
+  /* ESC key to close dashboard */
+  window.addEventListener('keydown', function(e) {
+    if (e.key === "Escape" && dashboardUI.style.display !== "none") {
+      closeDashboard();
+    }
   });
 
   /* ===== Init ===== */
