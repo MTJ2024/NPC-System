@@ -19,6 +19,7 @@ local STUCK_COUNT_THRESHOLD = 2        -- Consecutive stuck checks before re-rou
 -- Movement redirect cooldown (prevents constant task clearing that freezes NPCs)
 local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
 local RADIUS_EXCEED_BUFFER = 1.5       -- Only redirect when NPC exceeds radius * this factor
+local DESPAWN_RADIUS_MULTIPLIER = 5    -- Despawn NPC if it exceeds radius * this factor
 
 -- Sync debounce: prevent multiple rapid syncAllNpcs from respawning NPCs over and over
 local lastSyncTime = 0
@@ -177,7 +178,7 @@ RegisterNetEvent("npc_dashboard:syncAllNpcs")
 AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     -- Debounce: ignore rapid re-syncs (e.g. multiple triggers on restart)
     local now = GetGameTimer()
-    if (now - lastSyncTime) < SYNC_DEBOUNCE_MS and lastSyncTime > 0 then
+    if (now - lastSyncTime) < SYNC_DEBOUNCE_MS then
         print("[NPC-SPAWN] syncAllNpcs DEBOUNCED - ignoring (last sync " .. (now - lastSyncTime) .. "ms ago)")
         -- Still update the NPC list for dashboard UI
         AlleNPCsSpawnenLastList = npcList
@@ -548,27 +549,25 @@ Citizen.CreateThread(function()
                 -- Only redirect if SIGNIFICANTLY beyond radius (with buffer) AND cooldown has passed
                 -- This prevents the old bug where TaskWanderInArea's soft boundary caused
                 -- the NPC to slightly exceed radius → task cleared every 500ms → NPC frozen in place
-                if isMovementEnabled(npc) and not status.inCombat and distToOrigin > (radius * RADIUS_EXCEED_BUFFER) then
-                    if (now - (status.lastRedirectTime or 0)) > REDIRECT_COOLDOWN_MS then
-                        debugLog("Moving NPC exceeded radius buffer, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
-                        ClearPedTasksImmediately(ped)
-                        -- Navigate back toward origin first, then resume wandering
-                        TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
-                        status.lastRedirectTime = now
-                        -- After a delay, resume wandering (in separate thread to not block)
-                        Citizen.CreateThread(function()
-                            Citizen.Wait(5000)
-                            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-                                local st = npcStatus[idx]
-                                if st and not st.inCombat and isMovementEnabled(npc) then
-                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
-                                end
+                if isMovementEnabled(npc) and not status.inCombat and distToOrigin > (radius * RADIUS_EXCEED_BUFFER) and (now - (status.lastRedirectTime or 0)) > REDIRECT_COOLDOWN_MS then
+                    debugLog("Moving NPC exceeded radius buffer, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
+                    ClearPedTasksImmediately(ped)
+                    -- Navigate back toward origin first, then resume wandering
+                    TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                    status.lastRedirectTime = now
+                    -- After a delay, resume wandering (in separate thread to not block)
+                    Citizen.CreateThread(function()
+                        Citizen.Wait(5000)
+                        if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                            local st = npcStatus[idx]
+                            if st and not st.inCombat and isMovementEnabled(npc) then
+                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             end
-                        end)
-                    end
+                        end
+                    end)
                     
                 -- For moving NPCs way too far, despawn and respawn
-                elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 5 then
+                elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * DESPAWN_RADIUS_MULTIPLIER then
                     debugLog("Moving NPC way too far, respawning: " .. tostring(npc.name or npc.model))
                     status.dead = true
                     status.deathTime = GetGameTimer()
