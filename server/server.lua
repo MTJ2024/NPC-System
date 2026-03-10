@@ -70,7 +70,16 @@ local clientGeladen, serverGeladen, htmlGeladen = false, false, false
 
 RegisterNetEvent("npc_dashboard:clientGeladen")
 AddEventHandler("npc_dashboard:clientGeladen", function()
+    local src = source
     clientGeladen = true
+    debugLog("Client " .. tostring(src) .. " loaded, sending NPCs...")
+    exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs', {}, function(npcs)
+        if src then
+            TriggerClientEvent("npc_dashboard:syncAllNpcs", src, npcs or {})
+            TriggerClientEvent("npc_dashboard:updateNPCList", src, npcs or {})
+            debugLog("Sent " .. #(npcs or {}) .. " NPCs to client " .. tostring(src))
+        end
+    end)
 end)
 
 RegisterNetEvent("npc_dashboard:htmlGeladen")
