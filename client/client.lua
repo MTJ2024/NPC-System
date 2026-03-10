@@ -11,10 +11,19 @@ local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
 
 -- Stuck detection thresholds
-local STUCK_CHECK_INTERVAL_MS = 1500   -- Minimum time between stuck checks
-local STUCK_DISTANCE_THRESHOLD = 0.3   -- NPC must move at least this far (meters) to not be stuck
-local STUCK_SPEED_THRESHOLD = 0.2      -- NPC speed below this (m/s) is considered stopped
+local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
+local STUCK_DISTANCE_THRESHOLD = 0.5   -- NPC must move at least this far (meters) to not be stuck
+local STUCK_SPEED_THRESHOLD = 0.3      -- NPC speed below this (m/s) is considered stopped
 local STUCK_COUNT_THRESHOLD = 2        -- Consecutive stuck checks before re-routing
+
+-- Movement redirect cooldown (prevents constant task clearing that freezes NPCs)
+local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
+local RADIUS_EXCEED_BUFFER = 1.5       -- Only redirect when NPC exceeds radius * this factor
+
+-- Sync debounce: prevent multiple rapid syncAllNpcs from respawning NPCs over and over
+local lastSyncTime = 0
+local SYNC_DEBOUNCE_MS = 3000          -- Ignore syncs within this many ms of last sync
+
 -- Debug logging helper
 local function debugLog(msg)
     if Config and Config.Debug then
@@ -22,12 +31,20 @@ local function debugLog(msg)
     end
 end
 
--- Spezialwerte aus Config holen
+-- Spezialwerte aus Config holen (priority: SpecialNpcs > per-NPC DB value > Config default)
 local function getNpcConfig(npc, key)
+    -- 1. Check SpecialNpcs override from config file
     if npc and npc.id and Config.SpecialNpcs and Config.SpecialNpcs[npc.id] and Config.SpecialNpcs[npc.id][key] ~= nil then
         return Config.SpecialNpcs[npc.id][key]
     end
-    -- Map config keys that don't follow the Default... pattern
+    -- 2. Check per-NPC value from database (e.g., npc.radius, npc.weapon)
+    if npc and npc[key] ~= nil then
+        local val = tonumber(npc[key])
+        if val then return val end
+        -- Non-numeric DB values (strings)
+        if type(npc[key]) == "string" and npc[key] ~= "" then return npc[key] end
+    end
+    -- 3. Map config keys that don't follow the Default... pattern
     if key == "invincible" then
         return Config.NPCInvincible
     end
@@ -136,7 +153,8 @@ local function setupNpcPed(ped, npc, idx)
         lastAttacker = nil,
         lastMoveCheck = 0,
         lastMovePos = nil,
-        stuckCount = 0
+        stuckCount = 0,
+        lastRedirectTime = 0
     }
     
     -- Set initial movement behavior
@@ -157,6 +175,16 @@ end
 
 RegisterNetEvent("npc_dashboard:syncAllNpcs")
 AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
+    -- Debounce: ignore rapid re-syncs (e.g. multiple triggers on restart)
+    local now = GetGameTimer()
+    if (now - lastSyncTime) < SYNC_DEBOUNCE_MS and lastSyncTime > 0 then
+        print("[NPC-SPAWN] syncAllNpcs DEBOUNCED - ignoring (last sync " .. (now - lastSyncTime) .. "ms ago)")
+        -- Still update the NPC list for dashboard UI
+        AlleNPCsSpawnenLastList = npcList
+        return
+    end
+    lastSyncTime = now
+    
     print("[NPC-SPAWN] syncAllNpcs received - " .. #(npcList or {}) .. " NPCs to spawn")
     
     for idx, ped in pairs(gespawnteNpcs) do
@@ -503,7 +531,7 @@ end)
 -- Movement and despawn logic for NPCs that wander too far
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(500)
+        Citizen.Wait(1000) -- Check every second (was 500ms - too aggressive)
         
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
@@ -514,15 +542,33 @@ Citizen.CreateThread(function()
                 local pedCoords = GetEntityCoords(ped)
                 local distToOrigin = #(pedCoords - origin)
                 local radius = getNpcConfig(npc, "radius")
+                local now = GetGameTimer()
                 
-                -- For moving NPCs not in combat, redirect if they exceed radius
-                if isMovementEnabled(npc) and not status.inCombat and distToOrigin > radius then
-                    debugLog("Moving NPC exceeded radius, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
-                    ClearPedTasksImmediately(ped)
-                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                -- For moving NPCs not in combat:
+                -- Only redirect if SIGNIFICANTLY beyond radius (with buffer) AND cooldown has passed
+                -- This prevents the old bug where TaskWanderInArea's soft boundary caused
+                -- the NPC to slightly exceed radius → task cleared every 500ms → NPC frozen in place
+                if isMovementEnabled(npc) and not status.inCombat and distToOrigin > (radius * RADIUS_EXCEED_BUFFER) then
+                    if (now - (status.lastRedirectTime or 0)) > REDIRECT_COOLDOWN_MS then
+                        debugLog("Moving NPC exceeded radius buffer, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
+                        ClearPedTasksImmediately(ped)
+                        -- Navigate back toward origin first, then resume wandering
+                        TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                        status.lastRedirectTime = now
+                        -- After a delay, resume wandering (in separate thread to not block)
+                        Citizen.CreateThread(function()
+                            Citizen.Wait(5000)
+                            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                                local st = npcStatus[idx]
+                                if st and not st.inCombat and isMovementEnabled(npc) then
+                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                end
+                            end
+                        end)
+                    end
                     
                 -- For moving NPCs way too far, despawn and respawn
-                elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 3 then
+                elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 5 then
                     debugLog("Moving NPC way too far, respawning: " .. tostring(npc.name or npc.model))
                     status.dead = true
                     status.deathTime = GetGameTimer()
@@ -577,7 +623,7 @@ end)
 -- Stuck detection: re-issue movement tasks when moving NPCs get stuck against walls/obstacles
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(2000) -- Check every 2 seconds
+        Citizen.Wait(1500) -- Check every 1.5 seconds (faster than before)
         
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
@@ -602,12 +648,40 @@ Citizen.CreateThread(function()
                             if status.stuckCount >= STUCK_COUNT_THRESHOLD then
                                 local origin = status.origin or vector3(npc.x, npc.y, npc.z)
                                 local radius = getNpcConfig(npc, "radius")
-                                debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x)")
+                                local distToOrigin = #(pedCoords - origin)
+                                debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x, dist=" .. string.format("%.1f", distToOrigin) .. "m)")
                                 ClearPedTasksImmediately(ped)
-                                -- Brief pause before new task so ped can reset navigation
-                                Citizen.Wait(100)
+                                Citizen.Wait(50)
                                 if DoesEntityExist(ped) then
-                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                    -- If far from origin, navigate back first; otherwise pick a random nearby point
+                                    if distToOrigin > radius * 0.5 then
+                                        -- Go back toward origin using any means (navmesh-aware)
+                                        TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                                        -- Resume wandering after reaching area
+                                        Citizen.CreateThread(function()
+                                            Citizen.Wait(4000)
+                                            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                                                local st = npcStatus[idx]
+                                                if st and not st.inCombat and isMovementEnabled(npc) then
+                                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                                end
+                                            end
+                                        end)
+                                    else
+                                        -- Near origin, just re-issue wander with slight random offset
+                                        local offsetX = math.random() * 4.0 - 2.0
+                                        local offsetY = math.random() * 4.0 - 2.0
+                                        TaskGoToCoordAnyMeans(ped, origin.x + offsetX, origin.y + offsetY, origin.z, 1.0, 0, false, 786603, 0.0)
+                                        Citizen.CreateThread(function()
+                                            Citizen.Wait(3000)
+                                            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
+                                                local st = npcStatus[idx]
+                                                if st and not st.inCombat and isMovementEnabled(npc) then
+                                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                                end
+                                            end
+                                        end)
+                                    end
                                 end
                                 status.stuckCount = 0
                             end
