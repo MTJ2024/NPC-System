@@ -10,6 +10,11 @@ local npcStatus = {}
 local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
 
+-- Stuck detection thresholds
+local STUCK_CHECK_INTERVAL_MS = 1500   -- Minimum time between stuck checks
+local STUCK_DISTANCE_THRESHOLD = 0.3   -- NPC must move at least this far (meters) to not be stuck
+local STUCK_SPEED_THRESHOLD = 0.2      -- NPC speed below this (m/s) is considered stopped
+local STUCK_COUNT_THRESHOLD = 2        -- Consecutive stuck checks before re-routing
 -- Debug logging helper
 local function debugLog(msg)
     if Config and Config.Debug then
@@ -590,11 +595,11 @@ Citizen.CreateThread(function()
                         local elapsed = now - (status.lastMoveCheck or 0)
                         
                         -- If NPC barely moved in the last check interval and speed is near 0
-                        if elapsed > 1500 and movedDist < 0.3 and speed < 0.2 then
+                        if elapsed > STUCK_CHECK_INTERVAL_MS and movedDist < STUCK_DISTANCE_THRESHOLD and speed < STUCK_SPEED_THRESHOLD then
                             status.stuckCount = (status.stuckCount or 0) + 1
                             
-                            -- After being stuck for 2 consecutive checks (~4 seconds), re-route
-                            if status.stuckCount >= 2 then
+                            -- After consecutive stuck checks, re-route
+                            if status.stuckCount >= STUCK_COUNT_THRESHOLD then
                                 local origin = status.origin or vector3(npc.x, npc.y, npc.z)
                                 local radius = getNpcConfig(npc, "radius")
                                 debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x)")
