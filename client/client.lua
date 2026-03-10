@@ -153,7 +153,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             local modelHash = GetHashKey(modelName)
             RequestModel(modelHash)
             local timeout = 0
-            while not HasModelLoaded(modelHash) and timeout < 500 do 
+            while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
                 Citizen.Wait(10)
                 timeout = timeout + 1
             end
@@ -223,7 +223,7 @@ Citizen.CreateThread(function()
                 local modelHash = GetHashKey(modelName)
                 RequestModel(modelHash)
                 local timeout = 0
-                while not HasModelLoaded(modelHash) and timeout < 500 do 
+                while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
                     Citizen.Wait(10) 
                     timeout = timeout + 1
                 end
