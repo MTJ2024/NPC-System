@@ -135,7 +135,7 @@ local function setupNpcPed(ped, npc, idx)
     -- Set initial movement behavior
     if isMovementEnabled(npc) then
         FreezeEntityPosition(ped, false)
-        local radius = getNpcConfig(npc, "radius")
+        local radius = tonumber(getNpcConfig(npc, "radius")) or Config.DefaultRadius
         TaskWanderInArea(ped, npc.x, npc.y, groundZ, radius, 0, 0)
         debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
     else
