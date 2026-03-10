@@ -170,21 +170,31 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             end
             
             if HasModelLoaded(modelHash) then
-                local ped = CreatePed(4, modelHash, npc.x, npc.y, npc.z, npc.heading or 0.0, true, false)
-                if setupNpcPed(ped, npc, idx) then
-                    gespawnteNpcs[idx] = ped
-                    debugLog("NPC spawned successfully: " .. tostring(npc.name or npc.model))
+                -- Use false for isNetwork to avoid OneSync entity limits
+                local ped = CreatePed(4, modelHash, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), tonumber(npc.heading) or 0.0, false, true)
+                if ped and ped ~= 0 and DoesEntityExist(ped) then
+                    if setupNpcPed(ped, npc, idx) then
+                        gespawnteNpcs[idx] = ped
+                        debugLog("NPC spawned successfully: " .. tostring(npc.name or npc.model) .. " (ped=" .. tostring(ped) .. ")")
+                    else
+                        debugLog("Failed to setup NPC: " .. tostring(npc.name or npc.model))
+                        if DoesEntityExist(ped) then DeleteEntity(ped) end
+                    end
                 else
-                    debugLog("Failed to setup NPC: " .. tostring(npc.name or npc.model))
-                    if DoesEntityExist(ped) then DeleteEntity(ped) end
+                    debugLog("CreatePed returned invalid ped for: " .. tostring(npc.name or npc.model) .. " model=" .. npc.model)
                 end
+                SetModelAsNoLongerNeeded(modelHash)
             else
                 debugLog("Failed to load model: " .. npc.model)
             end
+        else
+            debugLog("NPC missing required fields (x/y/z/model): idx=" .. tostring(idx))
         end
     end
     
-    debugLog("Sync complete - Active NPCs: " .. #gespawnteNpcs)
+    local count = 0
+    for _ in pairs(gespawnteNpcs) do count = count + 1 end
+    debugLog("Sync complete - Active NPCs: " .. count)
 end)
 
 RegisterNetEvent("npc_dashboard:updateNPCList")
@@ -228,14 +238,19 @@ Citizen.CreateThread(function()
                 end
                 
                 if HasModelLoaded(modelHash) then
-                    local ped = CreatePed(4, modelHash, npc.x, npc.y, npc.z, npc.heading or 0.0, true, false)
-                    if setupNpcPed(ped, npc, idx) then
-                        gespawnteNpcs[idx] = ped
-                        debugLog("NPC respawned successfully: " .. tostring(npc.name or npc.model))
+                    local ped = CreatePed(4, modelHash, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), tonumber(npc.heading) or 0.0, false, true)
+                    if ped and ped ~= 0 and DoesEntityExist(ped) then
+                        if setupNpcPed(ped, npc, idx) then
+                            gespawnteNpcs[idx] = ped
+                            debugLog("NPC respawned successfully: " .. tostring(npc.name or npc.model))
+                        else
+                            debugLog("Failed to respawn NPC: " .. tostring(npc.name or npc.model))
+                            if DoesEntityExist(ped) then DeleteEntity(ped) end
+                        end
                     else
-                        debugLog("Failed to respawn NPC: " .. tostring(npc.name or npc.model))
-                        if DoesEntityExist(ped) then DeleteEntity(ped) end
+                        debugLog("CreatePed returned invalid ped for respawn: " .. tostring(npc.name or npc.model))
                     end
+                    SetModelAsNoLongerNeeded(modelHash)
                 end
             end
         end
@@ -572,6 +587,12 @@ RegisterNUICallback("close", function(data, cb)
     cb("ok")
 end)
 
+RegisterNUICallback("htmlGeladen", function(data, cb)
+    debugLog("HTML/NUI page loaded successfully")
+    TriggerServerEvent("npc_dashboard:htmlGeladen")
+    cb("ok")
+end)
+
 -- ESC key monitoring: force-close dashboard if player presses ESC while it's open
 -- Note: When NUI has focus, the JS ESC handler fires first via the browser.
 -- This Lua handler is a safety net in case focus state gets out of sync.
@@ -658,79 +679,86 @@ RegisterNUICallback("start_coord_pick", function(data, cb)
 end)
 
 RegisterNUICallback("start_coord_heading_edit", function(data, cb)
-    istDashboardOffen = false
-    local coords = vector3(data.x or 0, data.y or 0, data.z or 0)
-    local heading = tonumber(data.npc and data.npc.heading) or 0.0
-    local model = (data.model or "mp_m_freemode_01"):gsub("^%s*(.-)%s*$", "%1")
-    local hash = GetHashKey(model)
+    cb('ok') -- Respond immediately to prevent fetch timeout
 
-    RequestModel(hash)
-    local timer = 0
-    while not HasModelLoaded(hash) do
-        Citizen.Wait(10)
-        timer = timer + 10
-        if timer > 5000 then
-            cb('error')
-            return
-        end
-    end
+    Citizen.CreateThread(function()
+        istDashboardOffen = false
+        SetNuiFocus(false, false)
+        local coords = vector3(data.x or 0, data.y or 0, data.z or 0)
+        local heading = tonumber(data.npc and data.npc.heading) or 0.0
+        local model = (data.model or "mp_m_freemode_01"):gsub("^%s*(.-)%s*$", "%1")
+        local hash = GetHashKey(model)
 
-    local previewPed = CreatePed(4, hash, coords.x, coords.y, coords.z, heading, false, true)
-    FreezeEntityPosition(previewPed, true)
-    SetEntityInvincible(previewPed, true)
-    SetBlockingOfNonTemporaryEvents(previewPed, true)
-
-    local cam = CreateCam("DEFAULT_SCRIPTED_CAMERA", true)
-    SetCamCoord(cam, coords.x, coords.y - 3.5, coords.z + 1.5)
-    PointCamAtEntity(cam, previewPed, 0.0, 0.0, 0.0)
-    SetCamActive(cam, true)
-    RenderScriptCams(true, false, 0, true, true)
-
-    TriggerEvent("npc_dashboard:showHelp", "Bewege mit Maus, Mausrad/A/D für Drehung, ENTER bestätigt, ESC abbricht")
-    local running = true
-
-    while running and previewPed and DoesEntityExist(previewPed) do
-        local mx, my = GetControlNormal(0, 239), GetControlNormal(0, 240)
-        local hit, newCoords = RaycastFromScreen(mx, my, 1000.0)
-        if hit and newCoords then
-            coords = newCoords
-            SetEntityCoords(previewPed, coords.x, coords.y, coords.z, false, false, false, true)
+        RequestModel(hash)
+        local timer = 0
+        while not HasModelLoaded(hash) do
+            Citizen.Wait(10)
+            timer = timer + 10
+            if timer > 5000 then
+                debugLog("Failed to load model for heading edit: " .. model)
+                SetNuiFocus(true, true)
+                SendNUIMessage({ type = "open" })
+                return
+            end
         end
 
-        DisableControlAction(0, 15, true)
-        DisableControlAction(0, 14, true)
-        DisableControlAction(0, 34, true)
-        DisableControlAction(0, 35, true)
-        DisableControlAction(0, 191, true)
-        DisableControlAction(0, 202, true)
+        local previewPed = CreatePed(4, hash, coords.x, coords.y, coords.z, heading, false, true)
+        FreezeEntityPosition(previewPed, true)
+        SetEntityInvincible(previewPed, true)
+        SetBlockingOfNonTemporaryEvents(previewPed, true)
 
-        if IsControlJustPressed(0, 15) then heading = heading + 5.0 end
-        if IsControlJustPressed(0, 14) then heading = heading - 5.0 end
-        if IsControlPressed(0, 34) then heading = heading - 1.0 end
-        if IsControlPressed(0, 35) then heading = heading + 1.0 end
+        local cam = CreateCam("DEFAULT_SCRIPTED_CAMERA", true)
+        SetCamCoord(cam, coords.x, coords.y - 3.5, coords.z + 1.5)
+        PointCamAtEntity(cam, previewPed, 0.0, 0.0, 0.0)
+        SetCamActive(cam, true)
+        RenderScriptCams(true, false, 0, true, true)
 
-        if heading < 0.0 then heading = heading + 360.0 end
-        if heading > 360.0 then heading = heading - 360.0 end
-        SetEntityHeading(previewPed, heading)
+        TriggerEvent("npc_dashboard:showHelp", "Bewege mit Maus, Mausrad/A/D für Drehung, ENTER bestätigt, ESC abbricht")
+        local running = true
 
-        if IsControlJustPressed(0, 191) then
-            SendNUIMessage({ type = "heading_selected", heading = heading, coords = {x = coords.x, y = coords.y, z = coords.z} })
-            running = false
+        while running and previewPed and DoesEntityExist(previewPed) do
+            local mx, my = GetControlNormal(0, 239), GetControlNormal(0, 240)
+            local hit, newCoords = RaycastFromScreen(mx, my, 1000.0)
+            if hit and newCoords then
+                coords = newCoords
+                SetEntityCoords(previewPed, coords.x, coords.y, coords.z, false, false, false, true)
+            end
+
+            DisableControlAction(0, 15, true)
+            DisableControlAction(0, 14, true)
+            DisableControlAction(0, 34, true)
+            DisableControlAction(0, 35, true)
+            DisableControlAction(0, 191, true)
+            DisableControlAction(0, 202, true)
+
+            if IsControlJustPressed(0, 15) then heading = heading + 5.0 end
+            if IsControlJustPressed(0, 14) then heading = heading - 5.0 end
+            if IsControlPressed(0, 34) then heading = heading - 1.0 end
+            if IsControlPressed(0, 35) then heading = heading + 1.0 end
+
+            if heading < 0.0 then heading = heading + 360.0 end
+            if heading > 360.0 then heading = heading - 360.0 end
+            SetEntityHeading(previewPed, heading)
+
+            if IsControlJustPressed(0, 191) then
+                SendNUIMessage({ type = "heading_selected", heading = heading, coords = {x = coords.x, y = coords.y, z = coords.z} })
+                running = false
+            end
+            if IsControlJustPressed(0, 202) then
+                running = false
+            end
+            Citizen.Wait(0)
         end
-        if IsControlJustPressed(0, 202) then
-            running = false
+        if previewPed and DoesEntityExist(previewPed) then
+            DeleteEntity(previewPed)
         end
-        Citizen.Wait(0)
-    end
-    if previewPed and DoesEntityExist(previewPed) then
-        DeleteEntity(previewPed)
-    end
-    RenderScriptCams(false, false, 0, true, true)
-    DestroyCam(cam, false)
-    TriggerEvent("npc_dashboard:hideHelp")
-    SetNuiFocus(true, true)
-    SendNUIMessage({ type = "open" })
-    cb('ok')
+        SetModelAsNoLongerNeeded(hash)
+        RenderScriptCams(false, false, 0, true, true)
+        DestroyCam(cam, false)
+        TriggerEvent("npc_dashboard:hideHelp")
+        SetNuiFocus(true, true)
+        SendNUIMessage({ type = "open" })
+    end)
 end)
 
 RegisterNUICallback("mouse_pick", function(data, cb)

@@ -72,7 +72,6 @@ let createPending = null;
 let activePanel = "overview";
 let activeCategory = null;
 let searchQuery = "";
-let focusState = true;
 
 /* ===== DOM Ready ===== */
 document.addEventListener("DOMContentLoaded", function() {
@@ -107,12 +106,8 @@ document.addEventListener("DOMContentLoaded", function() {
   const panels = { overview: overviewPanel, "npc-list": npcListPanel, "npc-create": npcCreatePanel };
 
   /* ===== Utility ===== */
-  function setNuiFocus(enable) {
-    focusState = !!enable;
-    if (typeof window.invokeNative === "function") {
-      window.invokeNative("setNuiFocus", enable, enable);
-    }
-  }
+  /* NOTE: NUI focus is managed EXCLUSIVELY by Lua via SetNuiFocus().
+     JS must NEVER call invokeNative("setNuiFocus") — doing so causes crashes and player freeze. */
 
   function showToast(msg, type) {
     type = type || "info";
@@ -464,8 +459,6 @@ document.addEventListener("DOMContentLoaded", function() {
       npcIgnoreGroups.value = editNPC.ignoreGroups || "";
       npcIgnoreJobs.value = editNPC.ignoreJobs || "";
       switchPanel("npc-create");
-      dashboardUI.style.display = "flex";
-      setNuiFocus(true);
       updateFormMode();
       showToast("NPC zum Bearbeiten geladen: " + escapeHtml(editNPC.name), "info");
     }
@@ -503,7 +496,6 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     dashboardUI.style.display = "none";
     mousePickOverlay.style.display = "block";
-    setNuiFocus(false);
     fetch('https://' + resourceName + '/start_coord_pick', { method: 'POST' });
   });
 
@@ -596,7 +588,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     if (event.data.type === "close") {
       dashboardUI.style.display = "none";
-      setNuiFocus(false);
     }
     if (event.data.type === "refresh") {
       if (event.data.npcs) {
@@ -631,15 +622,31 @@ document.addEventListener("DOMContentLoaded", function() {
         console.error(err);
       });
     }
+    if (event.data.type === "heading_selected") {
+      if (editNPC) {
+        npcHeading.value = Number(event.data.heading).toFixed(1);
+        if (event.data.coords) {
+          editNPC.x = event.data.coords.x;
+          editNPC.y = event.data.coords.y;
+          editNPC.z = event.data.coords.z;
+        }
+        showToast("Heading aktualisiert: " + Number(event.data.heading).toFixed(1) + "°", "info");
+      }
+    }
+    if (event.data.type === "open_coordpick") {
+      dashboardUI.style.display = "none";
+      mousePickOverlay.style.display = "block";
+    }
+    if (event.data.type === "close_coordpick") {
+      mousePickOverlay.style.display = "none";
+      dashboardUI.style.display = "flex";
+    }
   });
-
-  /* Close dashboard - release focus immediately, then notify Lua */
   var isClosing = false;
   function closeDashboard() {
     if (isClosing) return;
     isClosing = true;
     dashboardUI.style.display = "none";
-    setNuiFocus(false);
     fetch('https://' + resourceName + '/close', { method: 'POST' }).finally(function() {
       isClosing = false;
     });
