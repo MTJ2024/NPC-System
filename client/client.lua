@@ -40,31 +40,19 @@ local function npcIsAtOrigin(npc, ped)
     return #(coords - vector3(npc.x, npc.y, npc.z)) < (getNpcConfig(npc, "radius") * 1.2)
 end
 
--- Helper: Get ground Z coordinate for proper placement
-local function getGroundZ(x, y, z)
-    local retval, groundZ = GetGroundZFor_3dCoord(x, y, z + 1000.0, false)
-    if retval then
-        return groundZ
-    end
-    return z
-end
-
--- Helper: Setup NPC with proper ground placement and behavior
+-- Helper: Setup NPC with behavior (coordinates already set by CreatePed)
 local function setupNpcPed(ped, npc, idx)
     if not DoesEntityExist(ped) then return false end
     
-    debugLog("Setting up NPC: " .. tostring(npc.name or npc.model) .. " (Behavior: " .. tostring(npc.behavior) .. ")")
+    print("[NPC-SPAWN] Setting up: " .. tostring(npc.name or npc.model) .. " | Behavior: " .. tostring(npc.behavior) .. " | Pos: " .. tostring(npc.x) .. "," .. tostring(npc.y) .. "," .. tostring(npc.z))
     
     SetEntityAsMissionEntity(ped, true, true)
     SetPedKeepTask(ped, true)
     
-    -- Get proper ground Z and place NPC
-    local groundZ = getGroundZ(npc.x, npc.y, npc.z)
-    SetEntityCoords(ped, npc.x, npc.y, groundZ, false, false, false, false)
-    SetEntityHeading(ped, npc.heading or 0.0)
-    
-    -- Wait a frame for physics to settle
-    Citizen.Wait(100)
+    -- Use the exact coordinates from the database (user already picked correct position)
+    -- Do NOT use GetGroundZFor_3dCoord - it returns wrong Z when collision isn't loaded,
+    -- which sends NPCs underground where they're invisible but alive
+    SetEntityHeading(ped, tonumber(npc.heading) or 0.0)
     
     -- Set health and invincibility
     SetEntityHealth(ped, getNpcConfig(npc, "health"))
@@ -124,7 +112,7 @@ local function setupNpcPed(ped, npc, idx)
     npcStatus[idx] = {
         busy = false,
         pursuing = false,
-        origin = vector3(npc.x, npc.y, groundZ),
+        origin = vector3(tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)),
         deathTime = nil,
         dead = false,
         respawnAt = 0,
@@ -136,7 +124,7 @@ local function setupNpcPed(ped, npc, idx)
     if isMovementEnabled(npc) then
         FreezeEntityPosition(ped, false)
         local radius = tonumber(getNpcConfig(npc, "radius")) or Config.DefaultRadius
-        TaskWanderInArea(ped, npc.x, npc.y, groundZ, radius, 0, 0)
+        TaskWanderInArea(ped, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), radius, 0, 0)
         debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
     else
         ClearPedTasksImmediately(ped)
@@ -150,7 +138,7 @@ end
 
 RegisterNetEvent("npc_dashboard:syncAllNpcs")
 AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
-    debugLog("Syncing all NPCs - Total: " .. #(npcList or {}))
+    print("[NPC-SPAWN] syncAllNpcs received - " .. #(npcList or {}) .. " NPCs to spawn")
     
     for idx, ped in pairs(gespawnteNpcs) do
         if DoesEntityExist(ped) then DeleteEntity(ped) end
@@ -161,40 +149,42 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
 
     for idx, npc in ipairs(npcList or {}) do
         if npc.x and npc.y and npc.z and npc.model then
-            local modelHash = GetHashKey(npc.model)
+            local modelName = tostring(npc.model):gsub("^%s*(.-)%s*$", "%1")
+            local modelHash = GetHashKey(modelName)
             RequestModel(modelHash)
             local timeout = 0
-            while not HasModelLoaded(modelHash) and timeout < 100 do 
+            while not HasModelLoaded(modelHash) and timeout < 500 do 
                 Citizen.Wait(10)
                 timeout = timeout + 1
             end
             
             if HasModelLoaded(modelHash) then
-                -- Use false for isNetwork to avoid OneSync entity limits
-                local ped = CreatePed(4, modelHash, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), tonumber(npc.heading) or 0.0, false, true)
+                local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+                local heading = tonumber(npc.heading) or 0.0
+                local ped = CreatePed(4, modelHash, x, y, z, heading, false, true)
                 if ped and ped ~= 0 and DoesEntityExist(ped) then
                     if setupNpcPed(ped, npc, idx) then
                         gespawnteNpcs[idx] = ped
-                        debugLog("NPC spawned successfully: " .. tostring(npc.name or npc.model) .. " (ped=" .. tostring(ped) .. ")")
+                        print("[NPC-SPAWN] SUCCESS: " .. tostring(npc.name or modelName) .. " spawned (ped=" .. tostring(ped) .. ") at " .. x .. "," .. y .. "," .. z)
                     else
-                        debugLog("Failed to setup NPC: " .. tostring(npc.name or npc.model))
+                        print("[NPC-SPAWN] FAIL: setupNpcPed failed for " .. tostring(npc.name or modelName))
                         if DoesEntityExist(ped) then DeleteEntity(ped) end
                     end
                 else
-                    debugLog("CreatePed returned invalid ped for: " .. tostring(npc.name or npc.model) .. " model=" .. npc.model)
+                    print("[NPC-SPAWN] FAIL: CreatePed returned invalid ped for " .. tostring(npc.name or modelName) .. " (model=" .. modelName .. ", hash=" .. tostring(modelHash) .. ")")
                 end
                 SetModelAsNoLongerNeeded(modelHash)
             else
-                debugLog("Failed to load model: " .. npc.model)
+                print("[NPC-SPAWN] FAIL: Model not loaded after 5s: " .. modelName .. " (hash=" .. tostring(modelHash) .. ")")
             end
         else
-            debugLog("NPC missing required fields (x/y/z/model): idx=" .. tostring(idx))
+            print("[NPC-SPAWN] SKIP: NPC idx=" .. tostring(idx) .. " missing x/y/z/model")
         end
     end
     
     local count = 0
     for _ in pairs(gespawnteNpcs) do count = count + 1 end
-    debugLog("Sync complete - Active NPCs: " .. count)
+    print("[NPC-SPAWN] Sync complete - " .. count .. " NPCs active")
 end)
 
 RegisterNetEvent("npc_dashboard:updateNPCList")
@@ -223,34 +213,39 @@ Citizen.CreateThread(function()
         for idx, npc in ipairs(AlleNPCsSpawnenLastList or {}) do
             local status = npcStatus[idx]
             if status and status.dead and not gespawnteNpcs[idx] and GetGameTimer() - (status.deathTime or 0) > Config.DeadTimeout then
-                debugLog("Respawning NPC: " .. tostring(npc.name or npc.model))
+                print("[NPC-SPAWN] Respawning: " .. tostring(npc.name or npc.model))
                 status.dead = false
                 status.deathTime = nil
                 status.inCombat = false
                 status.pursuing = false
                 
-                local modelHash = GetHashKey(npc.model)
+                local modelName = tostring(npc.model):gsub("^%s*(.-)%s*$", "%1")
+                local modelHash = GetHashKey(modelName)
                 RequestModel(modelHash)
                 local timeout = 0
-                while not HasModelLoaded(modelHash) and timeout < 100 do 
+                while not HasModelLoaded(modelHash) and timeout < 500 do 
                     Citizen.Wait(10) 
                     timeout = timeout + 1
                 end
                 
                 if HasModelLoaded(modelHash) then
-                    local ped = CreatePed(4, modelHash, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), tonumber(npc.heading) or 0.0, false, true)
+                    local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+                    local heading = tonumber(npc.heading) or 0.0
+                    local ped = CreatePed(4, modelHash, x, y, z, heading, false, true)
                     if ped and ped ~= 0 and DoesEntityExist(ped) then
                         if setupNpcPed(ped, npc, idx) then
                             gespawnteNpcs[idx] = ped
-                            debugLog("NPC respawned successfully: " .. tostring(npc.name or npc.model))
+                            print("[NPC-SPAWN] Respawn SUCCESS: " .. tostring(npc.name or modelName))
                         else
-                            debugLog("Failed to respawn NPC: " .. tostring(npc.name or npc.model))
+                            print("[NPC-SPAWN] Respawn FAIL: setup failed for " .. tostring(npc.name or modelName))
                             if DoesEntityExist(ped) then DeleteEntity(ped) end
                         end
                     else
-                        debugLog("CreatePed returned invalid ped for respawn: " .. tostring(npc.name or npc.model))
+                        print("[NPC-SPAWN] Respawn FAIL: CreatePed invalid for " .. tostring(npc.name or modelName))
                     end
                     SetModelAsNoLongerNeeded(modelHash)
+                else
+                    print("[NPC-SPAWN] Respawn FAIL: Model not loaded: " .. modelName)
                 end
             end
         end
