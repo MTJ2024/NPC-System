@@ -679,7 +679,7 @@ RegisterNUICallback("start_coord_pick", function(data, cb)
 end)
 
 RegisterNUICallback("start_coord_heading_edit", function(data, cb)
-    cb('ok') -- Respond immediately to prevent fetch timeout
+    cb('ok') -- Respond immediately; blocking while-loop runs in separate thread to avoid hanging the NUI callback
 
     Citizen.CreateThread(function()
         istDashboardOffen = false
