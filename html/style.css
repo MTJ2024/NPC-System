@@ -19,10 +19,10 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   transform: translate(-50%, -50%);
   width: 92vw; height: 90vh;
   max-width: 1600px;
-  background: #12111a;
+  background: #1e1d30;
   border-radius: 20px;
   border: 1px solid rgba(180,0,0,0.3);
-  box-shadow: 0 25px 80px rgba(0,0,0,0.7), 0 0 40px rgba(180,0,0,0.15);
+  box-shadow: 0 25px 80px rgba(0,0,0,0.5), 0 0 40px rgba(180,0,0,0.15);
   display: flex;
   overflow: hidden;
   z-index: 9999;
@@ -33,7 +33,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .sidebar {
   width: 260px;
   min-width: 260px;
-  background: linear-gradient(180deg, #1a1928 0%, #12111a 100%);
+  background: linear-gradient(180deg, #262540 0%, #1e1d30 100%);
   border-right: 1px solid rgba(180,0,0,0.2);
   display: flex;
   flex-direction: column;
@@ -44,13 +44,13 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   align-items: center;
   gap: 12px;
   padding: 20px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
 }
 .sidebar-logo {
   width: 44px; height: 44px;
   border-radius: 12px;
   object-fit: contain;
-  background: #232232;
+  background: #2d2c42;
   border: 2px solid rgba(180,0,0,0.4);
   flex-shrink: 0;
 }
@@ -91,7 +91,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: #a0a0b8;
+  color: #b0b0c8;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -143,15 +143,15 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: #555;
+  color: #777;
 }
 
 /* Sidebar Footer */
 .sidebar-footer {
   padding: 14px 18px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255,255,255,0.08);
   font-size: 11px;
-  color: #666;
+  color: #888;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -159,7 +159,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 }
 .footer-copyright { color: #b40000; }
 .footer-server { color: #888; font-weight: 600; }
-.footer-divider { color: #444; }
+.footer-divider { color: #666; }
 .footer-author { color: #ffb600; font-weight: 600; }
 
 /* ===== Main Content ===== */
@@ -168,7 +168,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #0f0e17;
+  background: #1a1930;
 }
 
 /* Topbar */
@@ -177,8 +177,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   align-items: center;
   justify-content: space-between;
   padding: 16px 28px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: rgba(18,17,26,0.8);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  background: rgba(30,29,48,0.85);
   backdrop-filter: blur(10px);
 }
 .topbar-title {
@@ -196,8 +196,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   padding: 8px 14px;
   transition: all 0.2s;
@@ -206,7 +206,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   border-color: rgba(180,0,0,0.5);
   background: rgba(255,255,255,0.08);
 }
-.search-box i { color: #666; font-size: 13px; }
+.search-box i { color: #888; font-size: 13px; }
 .search-box input {
   border: none;
   background: none;
@@ -216,11 +216,11 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   width: 200px;
   font-family: 'Inter', sans-serif;
 }
-.search-box input::placeholder { color: #555; }
+.search-box input::placeholder { color: #777; }
 .close-btn {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: #888;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #aaa;
   width: 36px; height: 36px;
   border-radius: 10px;
   font-size: 16px;
@@ -263,8 +263,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   gap: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
   transition: all 0.25s;
   animation: fadeIn 0.5s ease-out backwards;
 }
@@ -300,7 +300,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .stat-label {
   display: block;
   font-size: 12px;
-  color: #666;
+  color: #888;
   font-weight: 500;
   margin-top: 2px;
 }
@@ -314,8 +314,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .cat-card {
   padding: 20px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
   cursor: pointer;
   transition: all 0.25s;
   animation: fadeIn 0.5s ease-out backwards;
@@ -346,7 +346,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .cat-card-icon.cat-emergency { background: rgba(251,146,60,0.15); color: #fb923c; }
 .cat-card-icon.cat-civilian { background: rgba(148,163,184,0.15); color: #94a3b8; }
 .cat-card-title { font-weight: 700; color: #fff; font-size: 15px; }
-.cat-card-count { font-size: 12px; color: #666; margin-left: auto; font-weight: 600; }
+.cat-card-count { font-size: 12px; color: #888; margin-left: auto; font-weight: 600; }
 .cat-card-npcs {
   display: flex;
   flex-wrap: wrap;
@@ -356,8 +356,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.06);
-  color: #aaa;
+  background: rgba(255,255,255,0.08);
+  color: #bbb;
   font-weight: 500;
 }
 
@@ -377,9 +377,9 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .filter-pill {
   padding: 6px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.04);
-  color: #888;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #aaa;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -399,8 +399,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   gap: 16px;
 }
 .npc-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 14px;
   padding: 18px;
   transition: all 0.25s;
@@ -466,24 +466,24 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #888;
+  color: #aaa;
 }
-.npc-detail i { font-size: 11px; color: #555; width: 14px; text-align: center; }
+.npc-detail i { font-size: 11px; color: #777; width: 14px; text-align: center; }
 .npc-detail-value { color: #ccc; font-weight: 500; }
 
 .npc-card-actions {
   display: flex;
   gap: 8px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255,255,255,0.10);
   padding-top: 12px;
 }
 .npc-action-btn {
   flex: 1;
   padding: 8px 0;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 8px;
-  background: rgba(255,255,255,0.04);
-  color: #888;
+  background: rgba(255,255,255,0.06);
+  color: #aaa;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -502,7 +502,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: #555;
+  color: #777;
 }
 .empty-state i { font-size: 48px; margin-bottom: 16px; display: block; }
 .empty-state p { font-size: 15px; font-weight: 500; }
@@ -522,7 +522,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   color: #fff;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
 }
 .form-header i { color: #b40000; font-size: 20px; }
 .form-grid {
@@ -535,7 +535,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .form-group label {
   font-size: 12px;
   font-weight: 600;
-  color: #888;
+  color: #aaa;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -545,8 +545,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 .form-group select {
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
   color: #fff;
   font-size: 13px;
   font-family: 'Inter', sans-serif;
@@ -560,8 +560,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   box-shadow: 0 0 0 3px rgba(180,0,0,0.1);
 }
 .form-group select { cursor: pointer; }
-.form-group select option { background: #1a1928; color: #fff; }
-.form-group input::placeholder { color: #555; }
+.form-group select option { background: #262540; color: #fff; }
+.form-group input::placeholder { color: #777; }
 
 /* Checkbox */
 .checkbox-label {
@@ -585,7 +585,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255,255,255,0.10);
 }
 .btn {
   padding: 12px 24px;
@@ -613,9 +613,9 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
 }
 .btn-success:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(5,150,105,0.4); }
 .btn-secondary {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: #888;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #aaa;
 }
 .btn-secondary:hover { color: #fff; border-color: rgba(255,255,255,0.2); }
 
@@ -635,8 +635,8 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   gap: 12px;
   padding: 14px 20px;
   border-radius: 12px;
-  background: rgba(18,17,26,0.95);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(30,29,48,0.95);
+  border: 1px solid rgba(255,255,255,0.14);
   backdrop-filter: blur(10px);
   min-width: 300px;
   max-width: 420px;
@@ -669,7 +669,7 @@ body { font-family: 'Inter', Arial, sans-serif; background: transparent; overflo
   left: 50%;
   transform: translateX(-50%);
   padding: 16px 32px;
-  background: rgba(18,17,26,0.95);
+  background: rgba(30,29,48,0.95);
   border: 1px solid rgba(180,0,0,0.3);
   border-radius: 14px;
   color: #fff;

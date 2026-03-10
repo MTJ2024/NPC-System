@@ -87,12 +87,13 @@ local function setupNpcPed(ped, npc, idx)
         debugLog("  Behavior: Passive (non-combat)")
         
     elseif behavior == "Neutral" then
-        -- Neutral NPCs can fight back when attacked but don't seek combat
-        SetBlockingOfNonTemporaryEvents(ped, false)
-        SetPedCombatAbility(ped, 1) -- Average combat ability
-        SetPedCombatRange(ped, 2) -- Medium range
+        -- Neutral NPCs are non-violent - they don't fight and don't flee
+        SetBlockingOfNonTemporaryEvents(ped, true)
+        SetPedCombatAbility(ped, 0) -- No combat
+        SetPedCombatRange(ped, 0) -- No range
         SetPedFleeAttributes(ped, 0, false) -- Won't flee
-        debugLog("  Behavior: Neutral (defensive)")
+        SetPedCombatAttributes(ped, 46, false)
+        debugLog("  Behavior: Neutral (non-violent, no combat)")
         
     elseif behavior == "Wache" or behavior == "Guard" then
         -- Guard NPCs actively defend and help allies
@@ -134,8 +135,9 @@ local function setupNpcPed(ped, npc, idx)
     -- Set initial movement behavior
     if isMovementEnabled(npc) then
         FreezeEntityPosition(ped, false)
-        TaskWanderStandard(ped, 10.0, 10)
-        debugLog("  Movement: Wandering")
+        local radius = getNpcConfig(npc, "radius")
+        TaskWanderInArea(ped, npc.x, npc.y, groundZ, radius, 0, 0)
+        debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
     else
         ClearPedTasksImmediately(ped)
         TaskStandStill(ped, -1)
@@ -294,16 +296,21 @@ Citizen.CreateThread(function()
                             status.pursuing = true
                             status.lastAttacker = playerPed
                         end
-                    elseif distToPlayer > radius * 1.5 and status.inCombat then
-                        -- Return to patrol if player gets too far
-                        debugLog("Aggressive NPC ending combat - player too far")
-                        status.inCombat = false
-                        status.pursuing = false
-                        ClearPedTasksImmediately(ped)
-                        if isMovementEnabled(npc) then
-                            TaskWanderStandard(ped, 10.0, 10)
-                        else
-                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                    elseif status.inCombat then
+                        -- Check distance from origin to prevent chasing out of zone
+                        local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                        local distToOrigin = #(npcCoords - origin)
+                        if distToOrigin > radius or distToPlayer > radius * 1.5 then
+                            -- Return to patrol if NPC left zone or player got too far
+                            debugLog("Aggressive NPC ending combat - outside radius zone")
+                            status.inCombat = false
+                            status.pursuing = false
+                            ClearPedTasksImmediately(ped)
+                            if isMovementEnabled(npc) then
+                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                            else
+                                TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                            end
                         end
                     end
                 end
@@ -383,16 +390,21 @@ Citizen.CreateThread(function()
                                 guardStatus.lastAttacker = playerPed
                             end
                         end
-                    elseif status.inCombat and distToPlayer > radius * 2 then
-                        -- Return to post if player gets too far
-                        debugLog("Guard NPC ending combat - player too far")
-                        status.inCombat = false
-                        status.pursuing = false
-                        ClearPedTasksImmediately(ped)
-                        if isMovementEnabled(npc) then
-                            TaskWanderStandard(ped, 10.0, 10)
-                        else
-                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                    elseif status.inCombat then
+                        -- Check distance from origin to prevent chasing out of zone
+                        local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                        local distToOrigin = #(npcCoords - origin)
+                        if distToOrigin > radius or distToPlayer > radius * 2 then
+                            -- Return to post if NPC left zone or player got too far
+                            debugLog("Guard NPC ending combat - outside radius zone")
+                            status.inCombat = false
+                            status.pursuing = false
+                            ClearPedTasksImmediately(ped)
+                            if isMovementEnabled(npc) then
+                                TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                            else
+                                TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                            end
                         end
                     end
                 end
@@ -401,12 +413,10 @@ Citizen.CreateThread(function()
     end
 end)
 
--- Neutral NPCs: Only fight back when directly attacked
+-- Neutral NPCs: Non-violent, no combat at all
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(500)
-        local playerPed = PlayerPedId()
-        local playerCoords = GetEntityCoords(playerPed)
+        Citizen.Wait(1000)
         
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
@@ -414,33 +424,24 @@ Citizen.CreateThread(function()
             
             if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                 if npc.behavior == "Neutral" then
-                    local npcCoords = GetEntityCoords(ped)
-                    local distToPlayer = #(npcCoords - playerCoords)
-                    local radius = getNpcConfig(npc, "radius")
-                    
-                    -- Only fight back if directly attacked
-                    if HasEntityBeenDamagedByEntity(ped, playerPed, true) and not status.inCombat then
-                        if not istSpielerIgnoriert(npc) then
-                            debugLog("Neutral NPC defending itself: " .. tostring(npc.name or npc.model))
-                            FreezeEntityPosition(ped, false)
-                            ClearPedTasksImmediately(ped)
-                            TaskCombatPed(ped, playerPed, 0, 16)
-                            status.inCombat = true
-                            status.pursuing = false -- Don't pursue, just defend
-                            status.lastAttacker = playerPed
-                        end
-                        ClearEntityLastDamageEntity(ped)
-                    elseif status.inCombat and distToPlayer > radius * 1.5 then
-                        -- Stop fighting if player gets away
-                        debugLog("Neutral NPC ending combat - player escaped")
+                    -- Ensure neutral NPCs never enter combat
+                    if status.inCombat then
+                        debugLog("Neutral NPC was in combat, clearing: " .. tostring(npc.name or npc.model))
                         status.inCombat = false
+                        status.pursuing = false
                         ClearPedTasksImmediately(ped)
+                        SetBlockingOfNonTemporaryEvents(ped, true)
                         if isMovementEnabled(npc) then
-                            TaskWanderStandard(ped, 10.0, 10)
+                            local radius = getNpcConfig(npc, "radius")
+                            local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
                         else
-                            TaskGoToCoordAnyMeans(ped, npc.x, npc.y, npc.z, 1.0, 0, false, 786603, 0.0)
+                            TaskStandStill(ped, -1)
+                            FreezeEntityPosition(ped, true)
                         end
                     end
+                    -- Clear any damage flags so NPC doesn't react
+                    ClearEntityLastDamageEntity(ped)
                 end
             end
         end
@@ -450,7 +451,7 @@ end)
 -- Movement and despawn logic for NPCs that wander too far
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(1000)
+        Citizen.Wait(500)
         
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
@@ -462,11 +463,19 @@ Citizen.CreateThread(function()
                 local distToOrigin = #(pedCoords - origin)
                 local radius = getNpcConfig(npc, "radius")
                 
-                -- For moving NPCs, despawn if they wander too far
-                if isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 1.5 then
-                    debugLog("Moving NPC wandered too far, respawning: " .. tostring(npc.name or npc.model))
+                -- For moving NPCs not in combat, redirect if they exceed radius
+                if isMovementEnabled(npc) and not status.inCombat and distToOrigin > radius then
+                    debugLog("Moving NPC exceeded radius, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
+                    ClearPedTasksImmediately(ped)
+                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 0, 0)
+                    
+                -- For moving NPCs way too far, despawn and respawn
+                elseif isMovementEnabled(npc) and not status.pursuing and distToOrigin > radius * 3 then
+                    debugLog("Moving NPC way too far, respawning: " .. tostring(npc.name or npc.model))
                     status.dead = true
                     status.deathTime = GetGameTimer()
+                    status.inCombat = false
+                    status.pursuing = false
                     DeleteEntity(ped)
                     gespawnteNpcs[idx] = nil
                     
@@ -474,7 +483,7 @@ Citizen.CreateThread(function()
                 elseif not isMovementEnabled(npc) and not status.inCombat then
                     if not IsEntityPositionFrozen(ped) or distToOrigin > 2.0 then
                         -- Return to origin if moved
-                        if distToOrigin > 5.0 then
+                        if distToOrigin > 3.0 then
                             debugLog("Stationary NPC moved too far, teleporting back: " .. tostring(npc.name or npc.model))
                             SetEntityCoords(ped, origin.x, origin.y, origin.z, false, false, false, false)
                         end
@@ -483,9 +492,9 @@ Citizen.CreateThread(function()
                         FreezeEntityPosition(ped, true)
                     end
                     
-                -- Return stationary NPCs to origin after combat ends
-                elseif not isMovementEnabled(npc) and status.inCombat and distToOrigin > radius * 2 then
-                    debugLog("Stationary NPC too far from origin, returning: " .. tostring(npc.name or npc.model))
+                -- Return stationary NPCs to origin after combat - tighter radius check
+                elseif not isMovementEnabled(npc) and status.inCombat and distToOrigin > radius then
+                    debugLog("Stationary NPC too far from origin during combat, returning: " .. tostring(npc.name or npc.model))
                     status.inCombat = false
                     status.pursuing = false
                     ClearPedTasksImmediately(ped)
