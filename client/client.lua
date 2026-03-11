@@ -216,7 +216,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             
             RequestModel(modelHash)
             local timeout = 0
-            while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
+            while (not HasModelLoaded(modelHash) or not HasCollisionLoadedAroundEntity(PlayerPedId())) and timeout < 500 do -- 500 × 10ms = 5 seconds max
                 Citizen.Wait(10)
                 timeout = timeout + 1
             end
@@ -719,6 +719,23 @@ function istSpielerIgnoriert(npc)
     end
     return false
 end
+
+-- Cleanup: Delete all NPC entities when resource stops (prevents zombie peds after restart)
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        local count = 0
+        for idx, ped in pairs(gespawnteNpcs) do
+            if DoesEntityExist(ped) then
+                DeleteEntity(ped)
+                count = count + 1
+            end
+        end
+        print("[NPC-SPAWN] Resource stopping - cleaned up " .. count .. " NPC entities")
+        gespawnteNpcs = {}
+        npcStatus = {}
+        AlleNPCsSpawnenLastList = nil
+    end
+end)
 
 -- Dashboard, NUI, Teleport, Koordinatenwahl, Help etc. (wie gehabt)
 Citizen.CreateThread(function()

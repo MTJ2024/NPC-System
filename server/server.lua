@@ -122,17 +122,10 @@ AddEventHandler('onResourceStart', function(resourceName)
     if resourceName == GetCurrentResourceName() then
         serverGeladen = true
         debugLog("Resource started, loading NPCs from database...")
-        ladeAlleNpcs(function(npcs)
-            Citizen.CreateThread(function()
-                Citizen.Wait(3000)
-                if type(npcs) == "table" and #npcs > 0 then
-                    debugLog("Broadcasting " .. #npcs .. " NPCs to all clients after 3s delay")
-                    TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
-                else
-                    debugLog("No NPCs found in database")
-                end
-            end)
-        end)
+        -- ladeAlleNpcs already broadcasts syncAllNpcs to all clients when DB responds.
+        -- Clients also request NPCs via clientGeladen when they initialize.
+        -- No additional delayed broadcast needed - it caused duplicate respawns.
+        ladeAlleNpcs()
     end
 end)
 
