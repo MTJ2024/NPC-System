@@ -14,7 +14,8 @@ local lastNpcDelete = {}
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
 local STUCK_DISTANCE_THRESHOLD = 0.5   -- NPC must move at least this far (meters) to not be stuck
 local STUCK_SPEED_THRESHOLD = 0.3      -- NPC speed below this (m/s) is considered stopped
-local STUCK_COUNT_THRESHOLD = 2        -- Consecutive stuck checks before re-routing
+local STUCK_COUNT_THRESHOLD = 5        -- Consecutive stuck checks before re-routing (~7.5s of standstill)
+local REROUTE_COOLDOWN_MS = 30000      -- Cooldown after re-routing before next stuck check (ms)
 
 -- Movement redirect cooldown (prevents constant task clearing that freezes NPCs)
 local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
@@ -155,7 +156,8 @@ local function setupNpcPed(ped, npc, idx)
         lastMoveCheck = 0,
         lastMovePos = nil,
         stuckCount = 0,
-        lastRedirectTime = 0
+        lastRedirectTime = 0,
+        lastRerouteTime = 0
     }
     
     -- Set initial movement behavior
@@ -620,9 +622,10 @@ Citizen.CreateThread(function()
 end)
 
 -- Stuck detection: re-issue movement tasks when moving NPCs get stuck against walls/obstacles
+-- Only acts on NPCs that are genuinely stuck far from origin, not naturally pausing during wander
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(1500) -- Check every 1.5 seconds (faster than before)
+        Citizen.Wait(2000) -- Check every 2 seconds
         
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
@@ -630,49 +633,43 @@ Citizen.CreateThread(function()
             
             if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                 if isMovementEnabled(npc) and not status.inCombat then
-                    local pedCoords = GetEntityCoords(ped)
-                    local speed = GetEntitySpeed(ped)
                     local now = GetGameTimer()
                     
-                    -- Check if NPC is stuck (speed near 0 and has a previous position recorded)
-                    if status.lastMovePos then
-                        local movedDist = #(pedCoords - status.lastMovePos)
-                        local elapsed = now - (status.lastMoveCheck or 0)
+                    -- Skip stuck check during reroute cooldown (NPC was recently re-routed)
+                    if (now - (status.lastRerouteTime or 0)) < REROUTE_COOLDOWN_MS then
+                        status.lastMovePos = GetEntityCoords(ped)
+                        status.lastMoveCheck = now
+                    else
+                        local pedCoords = GetEntityCoords(ped)
+                        local speed = GetEntitySpeed(ped)
+                        local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                        local radius = getNpcConfig(npc, "radius")
+                        local distToOrigin = #(pedCoords - origin)
                         
-                        -- If NPC barely moved in the last check interval and speed is near 0
-                        if elapsed > STUCK_CHECK_INTERVAL_MS and movedDist < STUCK_DISTANCE_THRESHOLD and speed < STUCK_SPEED_THRESHOLD then
-                            status.stuckCount = (status.stuckCount or 0) + 1
+                        -- NPCs near their origin are not stuck - they are naturally pausing during wander
+                        -- Only consider stuck if NPC is far from origin (beyond 50% of radius)
+                        if distToOrigin <= radius * 0.5 then
+                            -- Near origin: NPC is fine, just standing at a wander pause point
+                            status.stuckCount = 0
+                        elseif status.lastMovePos then
+                            local movedDist = #(pedCoords - status.lastMovePos)
+                            local elapsed = now - (status.lastMoveCheck or 0)
                             
-                            -- After consecutive stuck checks, re-route
-                            if status.stuckCount >= STUCK_COUNT_THRESHOLD then
-                                local origin = status.origin or vector3(npc.x, npc.y, npc.z)
-                                local radius = getNpcConfig(npc, "radius")
-                                local distToOrigin = #(pedCoords - origin)
-                                debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x, dist=" .. string.format("%.1f", distToOrigin) .. "m)")
-                                ClearPedTasksImmediately(ped)
-                                Citizen.Wait(50)
-                                if DoesEntityExist(ped) then
-                                    -- If far from origin, navigate back first; otherwise pick a random nearby point
-                                    if distToOrigin > radius * 0.5 then
-                                        -- Go back toward origin using any means (navmesh-aware)
+                            -- If NPC barely moved in the last check interval and speed is near 0
+                            if elapsed > STUCK_CHECK_INTERVAL_MS and movedDist < STUCK_DISTANCE_THRESHOLD and speed < STUCK_SPEED_THRESHOLD then
+                                status.stuckCount = (status.stuckCount or 0) + 1
+                                
+                                -- After consecutive stuck checks, re-route
+                                if status.stuckCount >= STUCK_COUNT_THRESHOLD then
+                                    debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x, dist=" .. string.format("%.1f", distToOrigin) .. "m)")
+                                    ClearPedTasksImmediately(ped)
+                                    Citizen.Wait(50)
+                                    if DoesEntityExist(ped) then
+                                        -- Navigate back toward origin using any means (navmesh-aware)
                                         TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                                         -- Resume wandering after reaching area
                                         Citizen.CreateThread(function()
-                                            Citizen.Wait(4000)
-                                            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-                                                local st = npcStatus[idx]
-                                                if st and not st.inCombat and isMovementEnabled(npc) then
-                                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
-                                                end
-                                            end
-                                        end)
-                                    else
-                                        -- Near origin, just re-issue wander with slight random offset
-                                        local offsetX = math.random() * 4.0 - 2.0
-                                        local offsetY = math.random() * 4.0 - 2.0
-                                        TaskGoToCoordAnyMeans(ped, origin.x + offsetX, origin.y + offsetY, origin.z, 1.0, 0, false, 786603, 0.0)
-                                        Citizen.CreateThread(function()
-                                            Citizen.Wait(3000)
+                                            Citizen.Wait(5000)
                                             if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                                                 local st = npcStatus[idx]
                                                 if st and not st.inCombat and isMovementEnabled(npc) then
@@ -681,16 +678,17 @@ Citizen.CreateThread(function()
                                             end
                                         end)
                                     end
+                                    status.stuckCount = 0
+                                    status.lastRerouteTime = now
                                 end
+                            else
                                 status.stuckCount = 0
                             end
-                        else
-                            status.stuckCount = 0
                         end
+                        
+                        status.lastMovePos = pedCoords
+                        status.lastMoveCheck = now
                     end
-                    
-                    status.lastMovePos = pedCoords
-                    status.lastMoveCheck = now
                 end
             end
         end
