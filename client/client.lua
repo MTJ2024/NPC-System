@@ -213,10 +213,11 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
             
             -- Load collision at spawn point so the ped doesn't fall through ground
             RequestCollisionAtCoord(x, y, z)
+            Citizen.Wait(100) -- Brief wait for collision to begin loading
             
             RequestModel(modelHash)
             local timeout = 0
-            while (not HasModelLoaded(modelHash) or not HasCollisionLoadedAroundEntity(PlayerPedId())) and timeout < 500 do -- 500 × 10ms = 5 seconds max
+            while not HasModelLoaded(modelHash) and timeout < 500 do -- 500 × 10ms = 5 seconds max
                 Citizen.Wait(10)
                 timeout = timeout + 1
             end
