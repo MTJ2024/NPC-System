@@ -9,6 +9,10 @@ local gespawnteNpcs = {}
 local npcStatus = {}
 local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
+local syncInProgress = false
+
+-- Relationship group hash - prevents NPCs from fighting each other
+local NPC_RELATIONSHIP_GROUP = nil
 
 -- Stuck detection thresholds
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
@@ -33,6 +37,18 @@ local function debugLog(msg)
         print("[NPC-DEBUG] " .. tostring(msg))
     end
 end
+
+-- Initialize NPC relationship group so dashboard NPCs don't fight each other
+Citizen.CreateThread(function()
+    AddRelationshipGroup("NPC_DASHBOARD_GROUP")
+    NPC_RELATIONSHIP_GROUP = GetHashKey("NPC_DASHBOARD_GROUP")
+    -- NPCs are companions to each other (won't fight each other)
+    SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_RELATIONSHIP_GROUP)
+    -- NPCs neutral/respectful to players by default (behavior-specific combat handled by script threads)
+    SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, GetHashKey("PLAYER"))
+    SetRelationshipBetweenGroups(1, GetHashKey("PLAYER"), NPC_RELATIONSHIP_GROUP)
+    debugLog("NPC relationship group initialized")
+end)
 
 -- Spezialwerte aus Config holen (priority: SpecialNpcs > per-NPC DB value > Config default)
 local function getNpcConfig(npc, key)
@@ -144,6 +160,11 @@ local function setupNpcPed(ped, npc, idx)
     SetPedPathAvoidFire(ped, true)
     SetPedConfigFlag(ped, 208, true)  -- CPED_CONFIG_FLAG_DisableShockingEvents: ignore shocking events but still navigate
     
+    -- Assign to NPC relationship group (prevents NPCs from fighting each other)
+    if NPC_RELATIONSHIP_GROUP then
+        SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
+    end
+    
     -- Initialize status tracking
     npcStatus[idx] = {
         busy = false,
@@ -187,6 +208,14 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
         AlleNPCsSpawnenLastList = npcList
         return
     end
+    
+    -- Prevent concurrent sync operations (yields during model loading could allow re-entry)
+    if syncInProgress then
+        print("[NPC-SPAWN] syncAllNpcs BLOCKED - sync already in progress")
+        AlleNPCsSpawnenLastList = npcList
+        return
+    end
+    syncInProgress = true
     lastSyncTime = now
     
     print("[NPC-SPAWN] syncAllNpcs received - " .. #(npcList or {}) .. " NPCs to spawn")
@@ -248,6 +277,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     local count = 0
     for _ in pairs(gespawnteNpcs) do count = count + 1 end
     print("[NPC-SPAWN] Sync complete - " .. count .. " NPCs active")
+    syncInProgress = false
 end)
 
 RegisterNetEvent("npc_dashboard:updateNPCList")
@@ -259,6 +289,10 @@ end)
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(500)
+        -- Skip respawn checks while a full sync is in progress
+        if syncInProgress then goto continueLoop end
+        
+        -- Detect dead NPCs
         for idx, ped in pairs(gespawnteNpcs) do
             local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
             local status = npcStatus[idx]
@@ -272,10 +306,45 @@ Citizen.CreateThread(function()
                 gespawnteNpcs[idx] = nil
             end
         end
+        
+        -- Detect entities that vanished without dying (streamed out, game engine cleanup)
+        for idx, ped in pairs(gespawnteNpcs) do
+            if not DoesEntityExist(ped) then
+                local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
+                local status = npcStatus[idx]
+                if status and not status.dead then
+                    debugLog("NPC entity vanished (not dead): " .. tostring(npc and (npc.name or npc.model) or "unknown"))
+                    status.dead = true
+                    status.deathTime = GetGameTimer()
+                    gespawnteNpcs[idx] = nil
+                end
+            end
+        end
 
+        -- Respawn dead NPCs after timeout (only if NPC is actually dead and no alive ped exists there)
         for idx, npc in ipairs(AlleNPCsSpawnenLastList or {}) do
             local status = npcStatus[idx]
             if status and status.dead and not gespawnteNpcs[idx] and GetGameTimer() - (status.deathTime or 0) > Config.DeadTimeout then
+                local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+                
+                -- Check if there's already an alive NPC at this position (prevent duplicates)
+                local alreadyExists = false
+                for _, existingPed in pairs(gespawnteNpcs) do
+                    if DoesEntityExist(existingPed) and not IsPedDeadOrDying(existingPed, true) then
+                        local existingCoords = GetEntityCoords(existingPed)
+                        if #(existingCoords - vector3(x, y, z)) < 3.0 then
+                            alreadyExists = true
+                            break
+                        end
+                    end
+                end
+                if alreadyExists then
+                    debugLog("Respawn skipped - NPC already alive at position: " .. tostring(npc.name or npc.model))
+                    status.dead = false
+                    status.deathTime = nil
+                    goto continueRespawn
+                end
+                
                 print("[NPC-SPAWN] Respawning: " .. tostring(npc.name or npc.model))
                 status.dead = false
                 status.deathTime = nil
@@ -290,7 +359,6 @@ Citizen.CreateThread(function()
                     goto continueRespawn
                 end
                 
-                local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
                 local heading = tonumber(npc.heading) or 0.0
                 
                 -- Load collision at respawn point
@@ -323,6 +391,7 @@ Citizen.CreateThread(function()
                 ::continueRespawn::
             end
         end
+        ::continueLoop::
     end
 end)
 
