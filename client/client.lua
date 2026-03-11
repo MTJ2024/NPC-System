@@ -14,8 +14,9 @@ local lastNpcDelete = {}
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
 local STUCK_DISTANCE_THRESHOLD = 0.5   -- NPC must move at least this far (meters) to not be stuck
 local STUCK_SPEED_THRESHOLD = 0.3      -- NPC speed below this (m/s) is considered stopped
-local STUCK_COUNT_THRESHOLD = 5        -- Consecutive stuck checks before re-routing (~7.5s of standstill)
+local STUCK_COUNT_THRESHOLD = 5        -- Consecutive stuck checks before re-routing (~10s of standstill)
 local REROUTE_COOLDOWN_MS = 30000      -- Cooldown after re-routing before next stuck check (ms)
+local REROUTE_RECOVERY_MS = 5000       -- Wait time before resuming wander after re-route (ms)
 
 -- Movement redirect cooldown (prevents constant task clearing that freezes NPCs)
 local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
@@ -669,7 +670,7 @@ Citizen.CreateThread(function()
                                         TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                                         -- Resume wandering after reaching area
                                         Citizen.CreateThread(function()
-                                            Citizen.Wait(5000)
+                                            Citizen.Wait(REROUTE_RECOVERY_MS)
                                             if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                                                 local st = npcStatus[idx]
                                                 if st and not st.inCombat and isMovementEnabled(npc) then
