@@ -26,6 +26,7 @@ local REROUTE_RECOVERY_MS = 5000       -- Wait time before resuming wander after
 local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
 local RADIUS_EXCEED_BUFFER = 1.5       -- Only redirect when NPC exceeds radius * this factor
 local DESPAWN_RADIUS_MULTIPLIER = 5    -- Despawn NPC if it exceeds radius * this factor
+local DUPLICATE_DETECTION_RADIUS = 3.0  -- Distance (meters) to check for existing NPC before respawning
 
 -- Sync debounce: prevent multiple rapid syncAllNpcs from respawning NPCs over and over
 local lastSyncTime = 0
@@ -40,11 +41,14 @@ end
 
 -- Initialize NPC relationship group so dashboard NPCs don't fight each other
 Citizen.CreateThread(function()
-    AddRelationshipGroup("NPC_DASHBOARD_GROUP")
+    local success = AddRelationshipGroup("NPC_DASHBOARD_GROUP")
     NPC_RELATIONSHIP_GROUP = GetHashKey("NPC_DASHBOARD_GROUP")
-    -- NPCs are companions to each other (won't fight each other)
+    if not success then
+        debugLog("WARNING: Failed to create NPC relationship group (may already exist)")
+    end
+    -- NPCs are companions to each other (0 = Companion, won't fight each other)
     SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_RELATIONSHIP_GROUP)
-    -- NPCs neutral/respectful to players by default (behavior-specific combat handled by script threads)
+    -- NPCs neutral/respectful to players by default (1 = Respect; behavior-specific combat handled by script threads)
     SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, GetHashKey("PLAYER"))
     SetRelationshipBetweenGroups(1, GetHashKey("PLAYER"), NPC_RELATIONSHIP_GROUP)
     debugLog("NPC relationship group initialized")
@@ -332,7 +336,7 @@ Citizen.CreateThread(function()
                 for _, existingPed in pairs(gespawnteNpcs) do
                     if DoesEntityExist(existingPed) and not IsPedDeadOrDying(existingPed, true) then
                         local existingCoords = GetEntityCoords(existingPed)
-                        if #(existingCoords - vector3(x, y, z)) < 3.0 then
+                        if #(existingCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
                             alreadyExists = true
                             break
                         end
