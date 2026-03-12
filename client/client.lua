@@ -14,13 +14,13 @@ local syncInProgress = false
 -- Relationship group hash - prevents NPCs from fighting each other
 local NPC_RELATIONSHIP_GROUP = nil
 
--- Stuck detection thresholds
+-- Stuck detection thresholds (tuned for responsive obstacle avoidance)
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
-local STUCK_DISTANCE_THRESHOLD = 0.5   -- NPC must move at least this far (meters) to not be stuck
-local STUCK_SPEED_THRESHOLD = 0.3      -- NPC speed below this (m/s) is considered stopped
-local STUCK_COUNT_THRESHOLD = 5        -- Consecutive stuck checks before re-routing (~10s of standstill)
-local REROUTE_COOLDOWN_MS = 30000      -- Cooldown after re-routing before next stuck check (ms)
-local REROUTE_RECOVERY_MS = 5000       -- Wait time before resuming wander after re-route (ms)
+local STUCK_DISTANCE_THRESHOLD = 0.3   -- NPC must move at least this far (meters) to not be stuck
+local STUCK_SPEED_THRESHOLD = 0.2      -- NPC speed below this (m/s) is considered stopped
+local STUCK_COUNT_THRESHOLD = 3        -- Consecutive stuck checks before re-routing (~6s of standstill)
+local REROUTE_COOLDOWN_MS = 12000      -- Cooldown after re-routing before next stuck check (ms)
+local REROUTE_RECOVERY_MS = 4000       -- Wait time before resuming wander after re-route (ms)
 
 -- Movement redirect cooldown (prevents constant task clearing that freezes NPCs)
 local REDIRECT_COOLDOWN_MS = 10000     -- Min time between radius-redirect (ms)
@@ -77,6 +77,22 @@ end
 -- Helper: check if movement is enabled (handles number, string, bool from DB/JSON)
 local function isMovementEnabled(npc)
     return npc.movement == 1 or npc.movement == true or npc.movement == "1" or tonumber(npc.movement) == 1
+end
+
+-- Helper: Get a random navigable point within radius for obstacle avoidance re-routing.
+-- Instead of always going back to origin (which can lead to the same wall), pick a
+-- random offset direction. Uses GetSafeCoordForPed to find a point on the navmesh.
+local function getRandomNavPoint(origin, radius)
+    local angle = math.random() * 2 * math.pi
+    local dist = radius * (0.3 + math.random() * 0.5) -- 30-80% of radius
+    local targetX = origin.x + math.cos(angle) * dist
+    local targetY = origin.y + math.sin(angle) * dist
+    local found, safeX, safeY, safeZ = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
+    if found then
+        return vector3(safeX, safeY, safeZ)
+    end
+    -- Fallback: return origin if no safe coord found
+    return origin
 end
 
 local function npcIsAtOrigin(npc, ped)
@@ -161,8 +177,12 @@ local function setupNpcPed(ped, npc, idx)
     -- Enable improved pathfinding for all NPCs (navigate around obstacles, use climbovers/ladders)
     SetPedPathCanUseClimbovers(ped, true)
     SetPedPathCanUseLadders(ped, true)
+    SetPedPathCanDropFromHeight(ped, true)
     SetPedPathAvoidFire(ped, true)
-    SetPedConfigFlag(ped, 208, true)  -- CPED_CONFIG_FLAG_DisableShockingEvents: ignore shocking events but still navigate
+    SetPedPathPreferToAvoidWater(ped, true)
+    SetPedConfigFlag(ped, 208, true)   -- CPED_CONFIG_FLAG_DisableShockingEvents: ignore shocking events but still navigate
+    SetPedConfigFlag(ped, 400, true)   -- CPED_CONFIG_FLAG_CanUseDynamicNavmesh: use dynamic navmesh around obstacles
+    SetPedConfigFlag(ped, 2, true)     -- CPED_CONFIG_FLAG_NoCriticalHits: avoid ragdolling into obstacles
     
     -- Assign to NPC relationship group (prevents NPCs from fighting each other)
     if NPC_RELATIONSHIP_GROUP then
@@ -633,8 +653,9 @@ Citizen.CreateThread(function()
                     debugLog("Moving NPC exceeded radius buffer, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
                     ClearPedTasksImmediately(ped)
                     FreezeEntityPosition(ped, false)
-                    -- Navigate back toward origin first, then resume wandering
-                    TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                    -- Navigate to a random point near origin (not straight to origin, avoids same obstacle path)
+                    local navPoint = getRandomNavPoint(origin, radius * 0.5)
+                    TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
                     status.lastRedirectTime = now
                     -- After a delay, resume wandering (in separate thread to not block)
                     Citizen.CreateThread(function()
@@ -702,7 +723,8 @@ Citizen.CreateThread(function()
 end)
 
 -- Stuck detection: re-issue movement tasks when moving NPCs get stuck against walls/obstacles
--- Only acts on NPCs that are genuinely stuck far from origin, not naturally pausing during wander
+-- Detects NPCs that aren't moving despite having a wander task, and re-routes them to a
+-- random navigable point within their radius for clean direction changes around obstacles.
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(2000) -- Check every 2 seconds
@@ -724,14 +746,8 @@ Citizen.CreateThread(function()
                         local speed = GetEntitySpeed(ped)
                         local origin = status.origin or vector3(npc.x, npc.y, npc.z)
                         local radius = getNpcConfig(npc, "radius")
-                        local distToOrigin = #(pedCoords - origin)
                         
-                        -- NPCs near their origin are not stuck - they are naturally pausing during wander
-                        -- Only consider stuck if NPC is far from origin (beyond 50% of radius)
-                        if distToOrigin <= radius * 0.5 then
-                            -- Near origin: NPC is fine, just standing at a wander pause point
-                            status.stuckCount = 0
-                        elseif status.lastMovePos then
+                        if status.lastMovePos then
                             local movedDist = #(pedCoords - status.lastMovePos)
                             local elapsed = now - (status.lastMoveCheck or 0)
                             
@@ -739,16 +755,17 @@ Citizen.CreateThread(function()
                             if elapsed > STUCK_CHECK_INTERVAL_MS and movedDist < STUCK_DISTANCE_THRESHOLD and speed < STUCK_SPEED_THRESHOLD then
                                 status.stuckCount = (status.stuckCount or 0) + 1
                                 
-                                -- After consecutive stuck checks, re-route
+                                -- After consecutive stuck checks, re-route via random navigable point
                                 if status.stuckCount >= STUCK_COUNT_THRESHOLD then
-                                    debugLog("Stuck NPC detected, re-routing: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x, dist=" .. string.format("%.1f", distToOrigin) .. "m)")
+                                    debugLog("Stuck NPC detected, re-routing via random point: " .. tostring(npc.name or npc.model) .. " (stuck " .. tostring(status.stuckCount) .. "x)")
                                     ClearPedTasksImmediately(ped)
                                     Citizen.Wait(50)
                                     if DoesEntityExist(ped) then
                                         FreezeEntityPosition(ped, false)
-                                        -- Navigate back toward origin using any means (navmesh-aware)
-                                        TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
-                                        -- Resume wandering after reaching area
+                                        -- Pick a random navigable point within radius (avoids walking into same obstacle again)
+                                        local navPoint = getRandomNavPoint(origin, radius)
+                                        TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
+                                        -- Resume wandering after reaching the nav point
                                         Citizen.CreateThread(function()
                                             Citizen.Wait(REROUTE_RECOVERY_MS)
                                             if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
