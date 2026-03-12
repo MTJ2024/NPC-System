@@ -464,6 +464,7 @@ Citizen.CreateThread(function()
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
+                                FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
@@ -558,6 +559,7 @@ Citizen.CreateThread(function()
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
+                                FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
@@ -592,6 +594,7 @@ Citizen.CreateThread(function()
                         if isMovementEnabled(npc) then
                             local radius = getNpcConfig(npc, "radius")
                             local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+                            FreezeEntityPosition(ped, false)
                             TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                         else
                             TaskStandStill(ped, -1)
@@ -629,6 +632,7 @@ Citizen.CreateThread(function()
                 if isMovementEnabled(npc) and not status.inCombat and distToOrigin > (radius * RADIUS_EXCEED_BUFFER) and (now - (status.lastRedirectTime or 0)) > REDIRECT_COOLDOWN_MS then
                     debugLog("Moving NPC exceeded radius buffer, redirecting: " .. tostring(npc.name or npc.model) .. " (dist: " .. string.format("%.1f", distToOrigin) .. "m, radius: " .. tostring(radius) .. "m)")
                     ClearPedTasksImmediately(ped)
+                    FreezeEntityPosition(ped, false)
                     -- Navigate back toward origin first, then resume wandering
                     TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                     status.lastRedirectTime = now
@@ -638,6 +642,7 @@ Citizen.CreateThread(function()
                         if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                             local st = npcStatus[idx]
                             if st and not st.inCombat and isMovementEnabled(npc) then
+                                FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             end
                         end
@@ -740,6 +745,7 @@ Citizen.CreateThread(function()
                                     ClearPedTasksImmediately(ped)
                                     Citizen.Wait(50)
                                     if DoesEntityExist(ped) then
+                                        FreezeEntityPosition(ped, false)
                                         -- Navigate back toward origin using any means (navmesh-aware)
                                         TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                                         -- Resume wandering after reaching area
@@ -748,6 +754,7 @@ Citizen.CreateThread(function()
                                             if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
                                                 local st = npcStatus[idx]
                                                 if st and not st.inCombat and isMovementEnabled(npc) then
+                                                    FreezeEntityPosition(ped, false)
                                                     TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                                                 end
                                             end

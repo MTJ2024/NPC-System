@@ -12,6 +12,8 @@ const npcTypes = [
   { name: "Mafia", model: "g_m_m_chicold_01", weapon: "WEAPON_PISTOL", behavior: "Aggressiv", radius: 10, category: "criminal" },
   { name: "Dealer", model: "g_m_y_mexgoon_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10, category: "criminal" },
   { name: "Sicherheitskraft", model: "s_m_m_security_01", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "security" },
+  { name: "Leibwächter", model: "s_m_m_highsec_01", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "security" },
+  { name: "Leibwächter 2", model: "s_m_m_highsec_02", weapon: "WEAPON_PISTOL", behavior: "Wache", radius: 15, category: "security" },
   { name: "Türsteher", model: "s_m_m_bouncer_01", weapon: "WEAPON_BAT", behavior: "Wache", radius: 10, category: "security" },
   { name: "Koch mit Messer", model: "s_m_y_chef_01", weapon: "WEAPON_KNIFE", behavior: "Passiv", radius: 8, category: "civilian" },
   { name: "Pilot mit Pistole", model: "s_m_m_pilot_01", weapon: "WEAPON_PISTOL", behavior: "Neutral", radius: 10, category: "civilian" },

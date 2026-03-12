@@ -15,6 +15,8 @@ local npcTypes = {
     { name = "Mafia", model = "g_m_m_chicold_01", weapon = "WEAPON_PISTOL", behavior = "Aggressiv", radius = 10 },
     { name = "Dealer", model = "g_m_y_mexgoon_01", weapon = "WEAPON_PISTOL", behavior = "Neutral", radius = 10 },
     { name = "Sicherheitskraft", model = "s_m_m_security_01", weapon = "WEAPON_PISTOL", behavior = "Wache", radius = 15 },
+    { name = "Leibwächter", model = "s_m_m_highsec_01", weapon = "WEAPON_PISTOL", behavior = "Wache", radius = 15 },
+    { name = "Leibwächter 2", model = "s_m_m_highsec_02", weapon = "WEAPON_PISTOL", behavior = "Wache", radius = 15 },
     { name = "Türsteher", model = "s_m_m_bouncer_01", weapon = "WEAPON_BAT", behavior = "Wache", radius = 10 },
     { name = "Koch mit Messer", model = "s_m_y_chef_01", weapon = "WEAPON_KNIFE", behavior = "Passiv", radius = 8 },
     { name = "Pilot mit Pistole", model = "s_m_m_pilot_01", weapon = "WEAPON_PISTOL", behavior = "Neutral", radius = 10 },
@@ -259,45 +261,9 @@ ESX.RegisterServerCallback('npc_dashboard:getNPCTypes', function(source, cb)
     cb(npcTypes)
 end)
 
--- Respawn-System: Spawnt einen neuen NPC, wenn keiner im Radius existiert
-RegisterNetEvent("npc_dashboard:npcDied")
-AddEventHandler("npc_dashboard:npcDied", function(npcId, x, y, z, model, radius)
-    exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs WHERE model = ?', {model}, function(npcs)
-        local found = false
-        for _, npc in ipairs(npcs) do
-            if tostring(npc.id) ~= tostring(npcId) then
-                local dx = tonumber(x) - tonumber(npc.x)
-                local dy = tonumber(y) - tonumber(npc.y)
-                local dz = tonumber(z) - tonumber(npc.z)
-                local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                if dist < (tonumber(radius) or 10.0) then
-                    found = true
-                    break
-                end
-            end
-        end
-        if not found then
-            exports.oxmysql:execute('SELECT * FROM npc_dashboard_npcs WHERE id = ?', {npcId}, function(rows)
-                local old = rows and rows[1]
-                if old then
-                    exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs WHERE id = ?', {npcId}, function()
-                        exports.oxmysql:execute([[
-                            INSERT INTO npc_dashboard_npcs 
-                            (name, model, weapon, behavior, radius, x, y, z, heading, violent, movement, ignoreGroups, ignoreJobs)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ]], {
-                            old.name, old.model, old.weapon, old.behavior, old.radius, x, y, z, old.heading,
-                            old.violent, old.movement, old.ignoreGroups or '', old.ignoreJobs or ''
-                        }, function()
-                            TriggerEvent("npc_dashboard:forceBroadcastAllNpcs")
-                        end)
-                    end)
-                else
-                    exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs WHERE id = ?', {npcId})
-                end
-            end)
-        else
-            exports.oxmysql:execute('DELETE FROM npc_dashboard_npcs WHERE id = ?', {npcId})
-        end
-    end)
-end)
+-- Respawn-System: Handled entirely on client side (client/client.lua death monitoring thread).
+-- Server-side DB manipulation on NPC death was removed because:
+-- 1. It created new DB records (delete+insert) which caused duplicate NPC spawns
+-- 2. The full broadcast (forceBroadcastAllNpcs) triggered all clients to respawn ALL NPCs
+-- 3. Multiple clients reporting the same death caused cascading duplicates
+-- Client handles respawn locally after Config.DeadTimeout with duplicate detection.
