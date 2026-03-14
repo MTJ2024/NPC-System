@@ -30,7 +30,7 @@ local DUPLICATE_DETECTION_RADIUS = 3.0  -- Distance (meters) to check for existi
 
 -- Sync debounce: prevent multiple rapid syncAllNpcs from respawning NPCs over and over
 local lastSyncTime = 0
-local SYNC_DEBOUNCE_MS = 3000          -- Ignore syncs within this many ms of last sync
+local SYNC_DEBOUNCE_MS = 5000          -- Ignore syncs within this many ms of last sync
 
 -- Debug logging helper
 local function debugLog(msg)
@@ -122,8 +122,11 @@ local function setupNpcPed(ped, npc, idx)
     -- Give weapon if configured
     local npcWeapon = npc.weapon
     if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
-        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
-        debugLog("  Weapon given: " .. npcWeapon)
+        npcWeapon = tostring(npcWeapon):gsub("^%s*(.-)%s*$", "%1")
+        local weaponHash = GetHashKey(npcWeapon)
+        GiveWeaponToPed(ped, weaponHash, 999, false, true)
+        SetCurrentPedWeapon(ped, weaponHash, true)
+        debugLog("  Weapon given and equipped: " .. npcWeapon)
     end
     
     -- Behavior-specific setup
@@ -222,6 +225,28 @@ local function setupNpcPed(ped, npc, idx)
     return true
 end
 
+-- Helper: Clean up untracked (zombie) peds at NPC spawn locations from previous resource instances
+local function cleanupZombiePeds(npcList)
+    local allPeds = GetGamePool('CPed')
+    local playerPed = PlayerPedId()
+    local cleaned = 0
+    for _, ped in ipairs(allPeds) do
+        if DoesEntityExist(ped) and ped ~= playerPed and not IsPedAPlayer(ped) then
+            local pedCoords = GetEntityCoords(ped)
+            for _, npc in ipairs(npcList or {}) do
+                local nx, ny, nz = tonumber(npc.x) or 0, tonumber(npc.y) or 0, tonumber(npc.z) or 0
+                if #(pedCoords - vector3(nx, ny, nz)) < DUPLICATE_DETECTION_RADIUS then
+                    SetEntityAsMissionEntity(ped, true, true)
+                    DeleteEntity(ped)
+                    cleaned = cleaned + 1
+                    break
+                end
+            end
+        end
+    end
+    return cleaned
+end
+
 RegisterNetEvent("npc_dashboard:syncAllNpcs")
 AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     -- Debounce: ignore rapid re-syncs (e.g. multiple triggers on restart)
@@ -250,6 +275,12 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     gespawnteNpcs = {}
     npcStatus = {}
     AlleNPCsSpawnenLastList = npcList
+
+    -- Clean up zombie peds from previous resource instance at NPC spawn locations
+    local zombiesCleaned = cleanupZombiePeds(npcList)
+    if zombiesCleaned > 0 then
+        print("[NPC-SPAWN] Cleaned up " .. zombiesCleaned .. " zombie peds from previous instance")
+    end
 
     for idx, npc in ipairs(npcList or {}) do
         if npc.x and npc.y and npc.z and npc.model then
@@ -301,6 +332,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     local count = 0
     for _ in pairs(gespawnteNpcs) do count = count + 1 end
     print("[NPC-SPAWN] Sync complete - " .. count .. " NPCs active")
+    lastSyncTime = GetGameTimer() -- Update debounce after sync completes (prevents rapid re-syncs)
     syncInProgress = false
 end)
 
@@ -352,6 +384,7 @@ Citizen.CreateThread(function()
                 local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
                 
                 -- Check if there's already an alive NPC at this position (prevent duplicates)
+                -- Check both tracked NPCs and untracked peds in the game world (zombie peds)
                 local alreadyExists = false
                 for _, existingPed in pairs(gespawnteNpcs) do
                     if DoesEntityExist(existingPed) and not IsPedDeadOrDying(existingPed, true) then
@@ -359,6 +392,20 @@ Citizen.CreateThread(function()
                         if #(existingCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
                             alreadyExists = true
                             break
+                        end
+                    end
+                end
+                if not alreadyExists then
+                    -- Also check game pool for untracked peds at this location
+                    local allPeds = GetGamePool('CPed')
+                    local playerPed = PlayerPedId()
+                    for _, ped in ipairs(allPeds) do
+                        if DoesEntityExist(ped) and ped ~= playerPed and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped, true) then
+                            local pedCoords = GetEntityCoords(ped)
+                            if #(pedCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
+                                alreadyExists = true
+                                break
+                            end
                         end
                     end
                 end
@@ -796,6 +843,7 @@ end)
 
 function istSpielerIgnoriert(npc)
     local xPlayer = ESX.GetPlayerData()
+    if not xPlayer then return false end
     local spielerGruppe = xPlayer.group or ""
     local spielerJob = xPlayer.job and xPlayer.job.name or ""
 
@@ -843,9 +891,17 @@ end)
 
 -- When player ped spawns (initial spawn + respawns), request NPC sync
 AddEventHandler('playerSpawned', function()
-    debugLog("Player spawned, requesting NPC sync...")
+    debugLog("Player spawned, checking if NPC sync needed...")
     Citizen.Wait(2000) -- Wait for client scripts and streaming to fully initialize
-    TriggerServerEvent("npc_dashboard:clientGeladen")
+    -- Only request sync if no NPCs are currently active and no sync is running
+    local activeCount = 0
+    for _ in pairs(gespawnteNpcs) do activeCount = activeCount + 1 end
+    if activeCount == 0 and not syncInProgress then
+        debugLog("Player spawned with no active NPCs, requesting sync...")
+        TriggerServerEvent("npc_dashboard:clientGeladen")
+    else
+        debugLog("Player spawned but NPCs already active (" .. activeCount .. "), skipping sync")
+    end
 end)
 
 -- Fallback: If no NPCs spawned after 10 seconds, request them explicitly
@@ -854,7 +910,7 @@ Citizen.CreateThread(function()
     Citizen.Wait(10000)
     local activeCount = 0
     for _ in pairs(gespawnteNpcs) do activeCount = activeCount + 1 end
-    if activeCount == 0 then
+    if activeCount == 0 and not syncInProgress then
         debugLog("Fallback: No NPCs spawned after 10s, requesting NPC list...")
         ESX.TriggerServerCallback('npc_dashboard:getNPCList', function(npcs)
             if npcs and #npcs > 0 then
