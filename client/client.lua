@@ -121,8 +121,8 @@ local function setupNpcPed(ped, npc, idx)
     
     -- Give weapon if configured
     local npcWeapon = npc.weapon
-    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
-        npcWeapon = tostring(npcWeapon):gsub("^%s*(.-)%s*$", "%1")
+    if type(npcWeapon) == "string" and npcWeapon ~= "" and npcWeapon ~= "None" then
+        npcWeapon = npcWeapon:gsub("^%s*(.-)%s*$", "%1")
         local weaponHash = GetHashKey(npcWeapon)
         GiveWeaponToPed(ped, weaponHash, 999, false, true)
         SetCurrentPedWeapon(ped, weaponHash, true)
@@ -378,6 +378,9 @@ Citizen.CreateThread(function()
         end
 
         -- Respawn dead NPCs after timeout (only if NPC is actually dead and no alive ped exists there)
+        -- Pre-fetch game pool once for zombie ped detection (avoid repeated expensive calls per NPC)
+        local allPedsForRespawn = nil
+        local playerPedForRespawn = PlayerPedId()
         for idx, npc in ipairs(AlleNPCsSpawnenLastList or {}) do
             local status = npcStatus[idx]
             if status and status.dead and not gespawnteNpcs[idx] and GetGameTimer() - (status.deathTime or 0) > Config.DeadTimeout then
@@ -396,11 +399,12 @@ Citizen.CreateThread(function()
                     end
                 end
                 if not alreadyExists then
-                    -- Also check game pool for untracked peds at this location
-                    local allPeds = GetGamePool('CPed')
-                    local playerPed = PlayerPedId()
-                    for _, ped in ipairs(allPeds) do
-                        if DoesEntityExist(ped) and ped ~= playerPed and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped, true) then
+                    -- Also check game pool for untracked peds at this location (lazy-init once)
+                    if not allPedsForRespawn then
+                        allPedsForRespawn = GetGamePool('CPed')
+                    end
+                    for _, ped in ipairs(allPedsForRespawn) do
+                        if DoesEntityExist(ped) and ped ~= playerPedForRespawn and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped, true) then
                             local pedCoords = GetEntityCoords(ped)
                             if #(pedCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
                                 alreadyExists = true
@@ -843,7 +847,10 @@ end)
 
 function istSpielerIgnoriert(npc)
     local xPlayer = ESX.GetPlayerData()
-    if not xPlayer then return false end
+    if not xPlayer then
+        debugLog("istSpielerIgnoriert: ESX player data not available yet, defaulting to not ignored")
+        return false
+    end
     local spielerGruppe = xPlayer.group or ""
     local spielerJob = xPlayer.job and xPlayer.job.name or ""
 
