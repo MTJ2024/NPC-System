@@ -87,9 +87,10 @@ local function getRandomNavPoint(origin, radius)
     local dist = radius * (0.3 + math.random() * 0.5) -- 30-80% of radius
     local targetX = origin.x + math.cos(angle) * dist
     local targetY = origin.y + math.sin(angle) * dist
-    local found, safeX, safeY, safeZ = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
-    if found then
-        return vector3(safeX, safeY, safeZ)
+    -- GetSafeCoordForPed returns (bool, vector3) in FiveM Lua (not separate x,y,z)
+    local found, safeCoord = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
+    if found and safeCoord then
+        return vector3(safeCoord.x + 0.0, safeCoord.y + 0.0, safeCoord.z + 0.0)
     end
     -- Fallback: return origin if no safe coord found
     return origin
@@ -157,7 +158,9 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
+        SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
         SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatAttributes(ped, 17, true) -- AlwaysFight: never flee, always engage
         SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
         SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius") * 1.5)
@@ -169,7 +172,9 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
+        SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
         SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatAttributes(ped, 17, true) -- AlwaysFight: never flee, always engage
         SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
         SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius"))
