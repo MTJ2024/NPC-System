@@ -11,8 +11,10 @@ local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
 local syncInProgress = false
 
--- Relationship group hash - prevents NPCs from fighting each other
-local NPC_RELATIONSHIP_GROUP = nil
+-- Relationship group hashes - separate groups per behavior for correct combat responses
+local NPC_RELATIONSHIP_GROUP = nil      -- Passive/Neutral: Respect towards players
+local NPC_GUARD_GROUP = nil             -- Guard/Wache: will fight back when provoked
+local NPC_AGGRESSIVE_GROUP = nil        -- Aggressive: hostile on sight
 
 -- Stuck detection thresholds (tuned for responsive obstacle avoidance)
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
@@ -30,7 +32,7 @@ local DUPLICATE_DETECTION_RADIUS = 3.0  -- Distance (meters) to check for existi
 
 -- Sync debounce: prevent multiple rapid syncAllNpcs from respawning NPCs over and over
 local lastSyncTime = 0
-local SYNC_DEBOUNCE_MS = 3000          -- Ignore syncs within this many ms of last sync
+local SYNC_DEBOUNCE_MS = 5000          -- Ignore syncs within this many ms of last sync
 
 -- Debug logging helper
 local function debugLog(msg)
@@ -39,19 +41,55 @@ local function debugLog(msg)
     end
 end
 
--- Initialize NPC relationship group so dashboard NPCs don't fight each other
+-- Initialize NPC relationship groups so NPCs behave correctly per behavior type
 Citizen.CreateThread(function()
-    local success = AddRelationshipGroup("NPC_DASHBOARD_GROUP")
+    -- Group for Passive/Neutral NPCs (Respect towards players - no combat)
+    local success1 = AddRelationshipGroup("NPC_DASHBOARD_GROUP")
     NPC_RELATIONSHIP_GROUP = GetHashKey("NPC_DASHBOARD_GROUP")
-    if not success then
-        debugLog("WARNING: Failed to create NPC relationship group (may already exist)")
+    if not success1 then
+        debugLog("WARNING: Failed to create NPC_DASHBOARD_GROUP (may already exist)")
     end
-    -- NPCs are companions to each other (0 = Companion, won't fight each other)
+
+    -- Group for Guard/Wache NPCs (will fight when provoked, not flee)
+    local success2 = AddRelationshipGroup("NPC_GUARD_GROUP")
+    NPC_GUARD_GROUP = GetHashKey("NPC_GUARD_GROUP")
+    if not success2 then
+        debugLog("WARNING: Failed to create NPC_GUARD_GROUP (may already exist)")
+    end
+
+    -- Group for Aggressive NPCs (hostile on sight, Hate towards players)
+    local success3 = AddRelationshipGroup("NPC_AGGRESSIVE_GROUP")
+    NPC_AGGRESSIVE_GROUP = GetHashKey("NPC_AGGRESSIVE_GROUP")
+    if not success3 then
+        debugLog("WARNING: Failed to create NPC_AGGRESSIVE_GROUP (may already exist)")
+    end
+
+    local playerGroup = GetHashKey("PLAYER")
+
+    -- All NPC groups are companions to each other (0 = Companion, won't fight each other)
     SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_RELATIONSHIP_GROUP)
-    -- NPCs neutral/respectful to players by default (1 = Respect; behavior-specific combat handled by script threads)
-    SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, GetHashKey("PLAYER"))
-    SetRelationshipBetweenGroups(1, GetHashKey("PLAYER"), NPC_RELATIONSHIP_GROUP)
-    debugLog("NPC relationship group initialized")
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_GUARD_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_GUARD_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_RELATIONSHIP_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_RELATIONSHIP_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_GUARD_GROUP)
+
+    -- Passive/Neutral NPCs: Respect players (1 = Respect, won't fight)
+    SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(1, playerGroup, NPC_RELATIONSHIP_GROUP)
+
+    -- Guard NPCs: Dislike players (4 = Dislike, will fight back when provoked but not on sight)
+    SetRelationshipBetweenGroups(4, NPC_GUARD_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(4, playerGroup, NPC_GUARD_GROUP)
+
+    -- Aggressive NPCs: Hate players (5 = Hate, attack on sight - engine supports combat naturally)
+    SetRelationshipBetweenGroups(5, NPC_AGGRESSIVE_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(5, playerGroup, NPC_AGGRESSIVE_GROUP)
+
+    debugLog("NPC relationship groups initialized (Dashboard/Guard/Aggressive)")
 end)
 
 -- Spezialwerte aus Config holen (priority: SpecialNpcs > per-NPC DB value > Config default)
@@ -87,9 +125,10 @@ local function getRandomNavPoint(origin, radius)
     local dist = radius * (0.3 + math.random() * 0.5) -- 30-80% of radius
     local targetX = origin.x + math.cos(angle) * dist
     local targetY = origin.y + math.sin(angle) * dist
-    local found, safeX, safeY, safeZ = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
-    if found then
-        return vector3(safeX, safeY, safeZ)
+    -- GetSafeCoordForPed returns (bool, vector3) in FiveM Lua (not separate x,y,z)
+    local found, safeCoord = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
+    if found and safeCoord then
+        return vector3(safeCoord.x, safeCoord.y, safeCoord.z)
     end
     -- Fallback: return origin if no safe coord found
     return origin
@@ -121,9 +160,12 @@ local function setupNpcPed(ped, npc, idx)
     
     -- Give weapon if configured
     local npcWeapon = npc.weapon
-    if npcWeapon and npcWeapon ~= "" and npcWeapon ~= "None" then
-        GiveWeaponToPed(ped, GetHashKey(npcWeapon), 999, false, true)
-        debugLog("  Weapon given: " .. npcWeapon)
+    if type(npcWeapon) == "string" and npcWeapon ~= "" and npcWeapon ~= "None" then
+        npcWeapon = npcWeapon:gsub("^%s*(.-)%s*$", "%1")
+        local weaponHash = GetHashKey(npcWeapon)
+        GiveWeaponToPed(ped, weaponHash, 999, false, true)
+        SetCurrentPedWeapon(ped, weaponHash, true)
+        debugLog("  Weapon given and equipped: " .. npcWeapon)
     end
     
     -- Behavior-specific setup
@@ -137,6 +179,9 @@ local function setupNpcPed(ped, npc, idx)
         SetPedFleeAttributes(ped, 0, true) -- Can flee
         SetPedCombatAbility(ped, 0)
         SetPedCombatAttributes(ped, 46, false)
+        if NPC_RELATIONSHIP_GROUP then
+            SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
+        end
         debugLog("  Behavior: Passive (non-combat, blocking=" .. tostring(not moving) .. ")")
         
     elseif behavior == "Neutral" then
@@ -147,6 +192,9 @@ local function setupNpcPed(ped, npc, idx)
         SetPedCombatRange(ped, 0) -- No range
         SetPedFleeAttributes(ped, 0, false) -- Won't flee
         SetPedCombatAttributes(ped, 46, false)
+        if NPC_RELATIONSHIP_GROUP then
+            SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
+        end
         debugLog("  Behavior: Neutral (non-violent, blocking=" .. tostring(not moving) .. ")")
         
     elseif behavior == "Wache" or behavior == "Guard" then
@@ -154,11 +202,17 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
-        SetPedFleeAttributes(ped, 0, false) -- Never flee
-        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
-        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
+        SetPedFleeAttributes(ped, 0, false) -- Disable all flee flags
+        SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight: never flee, always engage
+        SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
+        SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate
+        SetPedCombatAttributes(ped, 14, false) -- Disable BF_AlwaysFlee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius") * 1.5)
         SetPedHearingRange(ped, getNpcConfig(npc, "radius") * 1.5)
+        if NPC_GUARD_GROUP then
+            SetPedRelationshipGroupHash(ped, NPC_GUARD_GROUP)
+        end
         debugLog("  Behavior: Guard (protective, will help allies)")
         
     elseif behavior == "Aggressiv" then
@@ -166,11 +220,17 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
-        SetPedFleeAttributes(ped, 0, false) -- Never flee
-        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
-        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
+        SetPedFleeAttributes(ped, 0, false) -- Disable all flee flags
+        SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight: never flee, always engage
+        SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
+        SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate
+        SetPedCombatAttributes(ped, 14, false) -- Disable BF_AlwaysFlee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius"))
         SetPedHearingRange(ped, getNpcConfig(npc, "radius"))
+        if NPC_AGGRESSIVE_GROUP then
+            SetPedRelationshipGroupHash(ped, NPC_AGGRESSIVE_GROUP)
+        end
         debugLog("  Behavior: Aggressive (hostile)")
     end
     
@@ -184,10 +244,7 @@ local function setupNpcPed(ped, npc, idx)
     SetPedConfigFlag(ped, 400, true)   -- CPED_CONFIG_FLAG_CanUseDynamicNavmesh: use dynamic navmesh around obstacles
     SetPedConfigFlag(ped, 2, true)     -- CPED_CONFIG_FLAG_NoCriticalHits: avoid ragdolling into obstacles
     
-    -- Assign to NPC relationship group (prevents NPCs from fighting each other)
-    if NPC_RELATIONSHIP_GROUP then
-        SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
-    end
+    -- NOTE: Relationship group is now assigned per-behavior above (not generic for all NPCs)
     
     -- Initialize status tracking
     npcStatus[idx] = {
@@ -209,17 +266,59 @@ local function setupNpcPed(ped, npc, idx)
     -- Set initial movement behavior
     if moving then
         FreezeEntityPosition(ped, false)
+        ClearPedTasksImmediately(ped)
         local radius = tonumber(getNpcConfig(npc, "radius")) or Config.DefaultRadius
-        TaskWanderInArea(ped, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), radius, 2.0, 1.0)
-        debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
+        local wx, wy, wz = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+        -- Delay wander task slightly to let ped and navmesh fully initialize after spawn
+        local wanderPed = ped
+        Citizen.CreateThread(function()
+            Citizen.Wait(500)
+            if DoesEntityExist(wanderPed) and not IsPedDeadOrDying(wanderPed, true) then
+                FreezeEntityPosition(wanderPed, false)
+                TaskWanderInArea(wanderPed, wx, wy, wz, radius, 2.0, 1.0)
+                debugLog("  Movement: Wander task issued (delayed) for " .. tostring(npc.name or npc.model))
+            end
+        end)
+        debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m (delayed start)")
     else
         ClearPedTasksImmediately(ped)
         TaskStandStill(ped, -1)
-        FreezeEntityPosition(ped, true)
-        debugLog("  Movement: Stationary")
+        -- Don't freeze immediately - let NPC settle to ground via gravity first
+        -- Freezing immediately after CreatePed causes hovering if ped is slightly above ground
+        local freezePed = ped
+        Citizen.CreateThread(function()
+            Citizen.Wait(1000) -- Let gravity settle ped to ground
+            if DoesEntityExist(freezePed) and not IsPedDeadOrDying(freezePed, true) then
+                FreezeEntityPosition(freezePed, true)
+                debugLog("  Movement: Ped frozen after settling for " .. tostring(npc.name or npc.model))
+            end
+        end)
+        debugLog("  Movement: Stationary (freeze delayed for ground settling)")
     end
     
     return true
+end
+
+-- Helper: Clean up untracked (zombie) peds at NPC spawn locations from previous resource instances
+local function cleanupZombiePeds(npcList)
+    local allPeds = GetGamePool('CPed')
+    local playerPed = PlayerPedId()
+    local cleaned = 0
+    for _, ped in ipairs(allPeds) do
+        if DoesEntityExist(ped) and ped ~= playerPed and not IsPedAPlayer(ped) then
+            local pedCoords = GetEntityCoords(ped)
+            for _, npc in ipairs(npcList or {}) do
+                local nx, ny, nz = tonumber(npc.x) or 0, tonumber(npc.y) or 0, tonumber(npc.z) or 0
+                if #(pedCoords - vector3(nx, ny, nz)) < DUPLICATE_DETECTION_RADIUS then
+                    SetEntityAsMissionEntity(ped, true, true)
+                    DeleteEntity(ped)
+                    cleaned = cleaned + 1
+                    break
+                end
+            end
+        end
+    end
+    return cleaned
 end
 
 RegisterNetEvent("npc_dashboard:syncAllNpcs")
@@ -250,6 +349,12 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     gespawnteNpcs = {}
     npcStatus = {}
     AlleNPCsSpawnenLastList = npcList
+
+    -- Clean up zombie peds from previous resource instance at NPC spawn locations
+    local zombiesCleaned = cleanupZombiePeds(npcList)
+    if zombiesCleaned > 0 then
+        print("[NPC-SPAWN] Cleaned up " .. zombiesCleaned .. " zombie peds from previous instance")
+    end
 
     for idx, npc in ipairs(npcList or {}) do
         if npc.x and npc.y and npc.z and npc.model then
@@ -301,6 +406,7 @@ AddEventHandler("npc_dashboard:syncAllNpcs", function(npcList)
     local count = 0
     for _ in pairs(gespawnteNpcs) do count = count + 1 end
     print("[NPC-SPAWN] Sync complete - " .. count .. " NPCs active")
+    lastSyncTime = GetGameTimer() -- Update debounce after sync completes (prevents rapid re-syncs)
     syncInProgress = false
 end)
 
@@ -346,12 +452,16 @@ Citizen.CreateThread(function()
         end
 
         -- Respawn dead NPCs after timeout (only if NPC is actually dead and no alive ped exists there)
+        -- Pre-fetch game pool once for zombie ped detection (avoid repeated expensive calls per NPC)
+        local allPedsForRespawn = nil
+        local playerPedForRespawn = PlayerPedId()
         for idx, npc in ipairs(AlleNPCsSpawnenLastList or {}) do
             local status = npcStatus[idx]
             if status and status.dead and not gespawnteNpcs[idx] and GetGameTimer() - (status.deathTime or 0) > Config.DeadTimeout then
                 local x, y, z = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
                 
                 -- Check if there's already an alive NPC at this position (prevent duplicates)
+                -- Check both tracked NPCs and untracked peds in the game world (zombie peds)
                 local alreadyExists = false
                 for _, existingPed in pairs(gespawnteNpcs) do
                     if DoesEntityExist(existingPed) and not IsPedDeadOrDying(existingPed, true) then
@@ -359,6 +469,21 @@ Citizen.CreateThread(function()
                         if #(existingCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
                             alreadyExists = true
                             break
+                        end
+                    end
+                end
+                if not alreadyExists then
+                    -- Also check game pool for untracked peds at this location (lazy-init once)
+                    if not allPedsForRespawn then
+                        allPedsForRespawn = GetGamePool('CPed')
+                    end
+                    for _, ped in ipairs(allPedsForRespawn) do
+                        if DoesEntityExist(ped) and ped ~= playerPedForRespawn and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped, true) then
+                            local pedCoords = GetEntityCoords(ped)
+                            if #(pedCoords - vector3(x, y, z)) < DUPLICATE_DETECTION_RADIUS then
+                                alreadyExists = true
+                                break
+                            end
                         end
                     end
                 end
@@ -445,6 +570,27 @@ local function getNearbyGuards(centerPed, radius)
     return guards
 end
 
+-- Helper: Reinforce combat attributes on a ped when entering combat
+-- This ensures the game engine doesn't override TaskCombatPed with flee behavior
+local function reinforceCombatMode(ped)
+    SetPedCombatAbility(ped, 2) -- Professional
+    SetPedCombatMovement(ped, 2) -- Offensive
+    SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight
+    SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
+    SetPedCombatAttributes(ped, 14, false) -- Disable BF_AlwaysFlee
+    SetPedFleeAttributes(ped, 0, false) -- Clear flee flags
+    SetBlockingOfNonTemporaryEvents(ped, true) -- Block flee/shocking events during combat
+end
+
+-- Helper: Reset ped back to normal after combat ends
+local function resetCombatMode(ped, behavior, moving)
+    if behavior == "Wache" or behavior == "Guard" or behavior == "Aggressiv" then
+        SetBlockingOfNonTemporaryEvents(ped, false) -- Allow events again
+    else
+        SetBlockingOfNonTemporaryEvents(ped, not moving) -- Restore per-behavior setting
+    end
+end
+
 -- Aggressive NPCs: Attack player on sight within radius
 Citizen.CreateThread(function()
     while true do
@@ -467,6 +613,7 @@ Citizen.CreateThread(function()
                         if not istSpielerIgnoriert(npc) then
                             debugLog("Aggressive NPC attacking player in radius: " .. tostring(npc.name or npc.model))
                             FreezeEntityPosition(ped, false)
+                            reinforceCombatMode(ped)
                             ClearPedTasksImmediately(ped)
                             TaskCombatPed(ped, playerPed, 0, 16)
                             status.inCombat = true
@@ -482,12 +629,20 @@ Citizen.CreateThread(function()
                             debugLog("Aggressive NPC ending combat - outside radius zone")
                             status.inCombat = false
                             status.pursuing = false
+                            resetCombatMode(ped, npc.behavior, isMovementEnabled(npc))
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
                                 FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                            end
+                        else
+                            -- NPC still in combat zone - ensure it's still fighting (re-apply if fleeing)
+                            if not IsPedInCombat(ped, playerPed) then
+                                reinforceCombatMode(ped)
+                                ClearPedTasksImmediately(ped)
+                                TaskCombatPed(ped, playerPed, 0, 16)
                             end
                         end
                     end
@@ -548,6 +703,7 @@ Citizen.CreateThread(function()
                     if shouldAttack and not status.inCombat and not istSpielerIgnoriert(npc) then
                         debugLog("Guard NPC engaging combat: " .. tostring(npc.name or npc.model) .. " - Reason: " .. attackReason)
                         FreezeEntityPosition(ped, false)
+                        reinforceCombatMode(ped)
                         ClearPedTasksImmediately(ped)
                         TaskCombatPed(ped, playerPed, 0, 16)
                         status.inCombat = true
@@ -561,6 +717,7 @@ Citizen.CreateThread(function()
                             if guardStatus and not guardStatus.inCombat then
                                 debugLog("  Nearby guard joining fight: " .. tostring(guard.npc.name or guard.npc.model))
                                 FreezeEntityPosition(guard.ped, false)
+                                reinforceCombatMode(guard.ped)
                                 ClearPedTasksImmediately(guard.ped)
                                 TaskCombatPed(guard.ped, playerPed, 0, 16)
                                 guardStatus.inCombat = true
@@ -577,12 +734,20 @@ Citizen.CreateThread(function()
                             debugLog("Guard NPC ending combat - outside radius zone")
                             status.inCombat = false
                             status.pursuing = false
+                            resetCombatMode(ped, npc.behavior, isMovementEnabled(npc))
                             ClearPedTasksImmediately(ped)
                             if isMovementEnabled(npc) then
                                 FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                            end
+                        else
+                            -- Guard still in combat zone - ensure it's still fighting (re-apply if fleeing)
+                            if not IsPedInCombat(ped, playerPed) and distToPlayer <= radius then
+                                reinforceCombatMode(ped)
+                                ClearPedTasksImmediately(ped)
+                                TaskCombatPed(ped, playerPed, 0, 16)
                             end
                         end
                     end
@@ -697,6 +862,7 @@ Citizen.CreateThread(function()
                     debugLog("Stationary NPC too far from origin during combat, returning: " .. tostring(npc.name or npc.model))
                     status.inCombat = false
                     status.pursuing = false
+                    resetCombatMode(ped, npc.behavior, isMovementEnabled(npc))
                     ClearPedTasksImmediately(ped)
                     TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                     -- Give NPC time to return, then check and freeze
@@ -796,6 +962,10 @@ end)
 
 function istSpielerIgnoriert(npc)
     local xPlayer = ESX.GetPlayerData()
+    if not xPlayer then
+        debugLog("istSpielerIgnoriert: ESX player data not available yet, defaulting to not ignored")
+        return false
+    end
     local spielerGruppe = xPlayer.group or ""
     local spielerJob = xPlayer.job and xPlayer.job.name or ""
 
@@ -843,9 +1013,17 @@ end)
 
 -- When player ped spawns (initial spawn + respawns), request NPC sync
 AddEventHandler('playerSpawned', function()
-    debugLog("Player spawned, requesting NPC sync...")
+    debugLog("Player spawned, checking if NPC sync needed...")
     Citizen.Wait(2000) -- Wait for client scripts and streaming to fully initialize
-    TriggerServerEvent("npc_dashboard:clientGeladen")
+    -- Only request sync if no NPCs are currently active and no sync is running
+    local activeCount = 0
+    for _ in pairs(gespawnteNpcs) do activeCount = activeCount + 1 end
+    if activeCount == 0 and not syncInProgress then
+        debugLog("Player spawned with no active NPCs, requesting sync...")
+        TriggerServerEvent("npc_dashboard:clientGeladen")
+    else
+        debugLog("Player spawned but NPCs already active (" .. activeCount .. "), skipping sync")
+    end
 end)
 
 -- Fallback: If no NPCs spawned after 10 seconds, request them explicitly
@@ -854,7 +1032,7 @@ Citizen.CreateThread(function()
     Citizen.Wait(10000)
     local activeCount = 0
     for _ in pairs(gespawnteNpcs) do activeCount = activeCount + 1 end
-    if activeCount == 0 then
+    if activeCount == 0 and not syncInProgress then
         debugLog("Fallback: No NPCs spawned after 10s, requesting NPC list...")
         ESX.TriggerServerCallback('npc_dashboard:getNPCList', function(npcs)
             if npcs and #npcs > 0 then
