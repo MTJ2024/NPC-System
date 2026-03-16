@@ -203,7 +203,7 @@ local function setupNpcPed(ped, npc, idx)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
         SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
-        SetPedFleeAttributes(ped, 0, 0) -- Disable all flee flags
+        SetPedFleeAttributes(ped, 0, false) -- Disable all flee flags
         SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight: never flee, always engage
         SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
         SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate
@@ -221,7 +221,7 @@ local function setupNpcPed(ped, npc, idx)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
         SetPedCombatMovement(ped, 2) -- Offensive (approach and engage, not hide)
-        SetPedFleeAttributes(ped, 0, 0) -- Disable all flee flags
+        SetPedFleeAttributes(ped, 0, false) -- Disable all flee flags
         SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight: never flee, always engage
         SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
         SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate
@@ -578,7 +578,7 @@ local function reinforceCombatMode(ped)
     SetPedCombatAttributes(ped, 5, true)  -- BF_AlwaysFight
     SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
     SetPedCombatAttributes(ped, 14, false) -- Disable BF_AlwaysFlee
-    SetPedFleeAttributes(ped, 0, 0) -- Clear flee flags
+    SetPedFleeAttributes(ped, 0, false) -- Clear flee flags
     SetBlockingOfNonTemporaryEvents(ped, true) -- Block flee/shocking events during combat
 end
 
