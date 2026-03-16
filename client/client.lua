@@ -90,7 +90,7 @@ local function getRandomNavPoint(origin, radius)
     -- GetSafeCoordForPed returns (bool, vector3) in FiveM Lua (not separate x,y,z)
     local found, safeCoord = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
     if found and safeCoord then
-        return vector3(safeCoord.x + 0.0, safeCoord.y + 0.0, safeCoord.z + 0.0)
+        return vector3(safeCoord.x, safeCoord.y, safeCoord.z)
     end
     -- Fallback: return origin if no safe coord found
     return origin
