@@ -114,7 +114,34 @@ end
 
 -- Helper: check if movement is enabled (handles number, string, bool from DB/JSON)
 local function isMovementEnabled(npc)
-    return npc.movement == 1 or npc.movement == true or npc.movement == "1" or tonumber(npc.movement) == 1
+    if not npc then return false end
+    local movement = npc.movement
+    if movement == 1 or movement == true or movement == "1" or tonumber(movement) == 1 then
+        return true
+    end
+    if type(movement) == "string" then
+        local normalized = movement:lower():gsub("^%s*(.-)%s*$", "%1")
+        return normalized == "on" or normalized == "true" or normalized == "yes" or normalized == "an"
+    end
+    return false
+end
+
+-- Helper: normalize behavior strings from DB/UI to canonical values
+local function normalizeBehavior(behavior)
+    if type(behavior) ~= "string" then
+        return "Passiv"
+    end
+    local normalized = behavior:lower():gsub("^%s*(.-)%s*$", "%1")
+    if normalized == "wache" or normalized == "guard" or normalized == "wach" or normalized == "wachmodus" then
+        return "Wache"
+    elseif normalized == "aggressiv" or normalized == "aggressive" then
+        return "Aggressiv"
+    elseif normalized == "neutral" then
+        return "Neutral"
+    elseif normalized == "passiv" or normalized == "passive" then
+        return "Passiv"
+    end
+    return "Passiv"
 end
 
 -- Helper: Get a random navigable point within radius for obstacle avoidance re-routing.
@@ -169,7 +196,7 @@ local function setupNpcPed(ped, npc, idx)
     end
     
     -- Behavior-specific setup
-    local behavior = npc.behavior or "Passiv"
+    local behavior = normalizeBehavior(npc and npc.behavior)
     local moving = isMovementEnabled(npc)
     
     if behavior == "Passiv" then
@@ -559,7 +586,7 @@ local function getNearbyGuards(centerPed, radius)
     for idx, ped in pairs(gespawnteNpcs) do
         local npc = AlleNPCsSpawnenLastList and AlleNPCsSpawnenLastList[idx]
         if npc and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-            if npc.behavior == "Wache" or npc.behavior == "Guard" then
+            if normalizeBehavior(npc.behavior) == "Wache" then
                 local dist = #(GetEntityCoords(ped) - GetEntityCoords(centerPed))
                 if dist <= radius then
                     table.insert(guards, {idx = idx, ped = ped, npc = npc})
@@ -603,7 +630,7 @@ Citizen.CreateThread(function()
             local status = npcStatus[idx]
             
             if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-                if npc.behavior == "Aggressiv" then
+                if normalizeBehavior(npc.behavior) == "Aggressiv" then
                     local npcCoords = GetEntityCoords(ped)
                     local distToPlayer = #(npcCoords - playerCoords)
                     local radius = getNpcConfig(npc, "radius")
@@ -665,7 +692,7 @@ Citizen.CreateThread(function()
             local status = npcStatus[idx]
             
             if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-                if npc.behavior == "Wache" or npc.behavior == "Guard" then
+                if normalizeBehavior(npc.behavior) == "Wache" then
                     local npcCoords = GetEntityCoords(ped)
                     local distToPlayer = #(npcCoords - playerCoords)
                     local radius = getNpcConfig(npc, "radius")
@@ -767,7 +794,7 @@ Citizen.CreateThread(function()
             local status = npcStatus[idx]
             
             if npc and status and DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) then
-                if npc.behavior == "Neutral" then
+                if normalizeBehavior(npc.behavior) == "Neutral" then
                     -- Ensure neutral NPCs never enter combat
                     if status.inCombat then
                         debugLog("Neutral NPC was in combat, clearing: " .. tostring(npc.name or npc.model))
