@@ -134,7 +134,7 @@ local function reinforceCombatMode(ped)
     SetPedCombatAttributes(ped, 14, false)  -- NOT BF_AlwaysFlee
     SetPedCombatAttributes(ped, 46, true)   -- BF_CanInvestigate: perceive threats
     SetPedFleeAttributes(ped, 0, true)      -- Clear ALL flee attributes
-    SetBlockingOfNonTemporaryEvents(ped, false) -- Allow events (weapon awareness etc.)
+    SetBlockingOfNonTemporaryEvents(ped, false) -- Allow events (enables weapon awareness; combat must be filtered via istSpielerIgnoriert)
 end
 
 local function npcIsAtOrigin(npc, ped)
@@ -632,7 +632,7 @@ Citizen.CreateThread(function()
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
                         else
-                            -- FIX #3: For moving NPCs allow a larger pursuit zone (radius*2) so
+                            -- Pursuit zone: moving NPCs get a larger origin buffer (radius*2) so
                             -- an NPC that wandered to the edge of its area can still chase the
                             -- player without immediately dropping combat.
                             local distToOrigin = #(npcCoords - origin)
@@ -763,9 +763,9 @@ Citizen.CreateThread(function()
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
                         else
-                            -- FIX #3: use a larger max-origin distance for moving NPCs so they
-                            -- don't immediately drop combat just because they wandered to the
-                            -- edge of their wander zone before engaging.
+                            -- Pursuit zone: moving NPCs get a larger origin buffer (radius*2) so
+                            -- an NPC that wandered to the edge of its area can still chase the
+                            -- player without immediately dropping combat.
                             local distToOrigin = #(npcCoords - origin)
                             local maxOriginDist = isMovementEnabled(npc) and (radius * 2.0) or radius
                             if distToOrigin > maxOriginDist or distToPlayer > radius * 2 then
@@ -784,7 +784,7 @@ Citizen.CreateThread(function()
                             end
                         end
                     end
-                    end -- end of native-AI bypass else-block
+                    end -- end of ignored-player check / native-AI combat prevention
                 end
             end
         end
