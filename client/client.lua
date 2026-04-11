@@ -185,8 +185,8 @@ local function setupNpcPed(ped, npc, idx)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
         SetPedFleeAttributes(ped, 0, false) -- Never flee
-        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
-        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate: enables investigation mode (perceive threats)
+        SetPedCombatAttributes(ped, 5, true) -- BF_AlwaysFight: always fight, never flee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius") * 1.5)
         SetPedHearingRange(ped, getNpcConfig(npc, "radius") * 1.5)
         debugLog("  Behavior: Guard (protective, will help allies)")
@@ -197,8 +197,8 @@ local function setupNpcPed(ped, npc, idx)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
         SetPedFleeAttributes(ped, 0, false) -- Never flee
-        SetPedCombatAttributes(ped, 46, true) -- Can fight armed peds when not armed
-        SetPedCombatAttributes(ped, 5, true) -- Can use vehicles
+        SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate: enables investigation mode (perceive threats)
+        SetPedCombatAttributes(ped, 5, true) -- BF_AlwaysFight: always fight, never flee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius"))
         SetPedHearingRange(ped, getNpcConfig(npc, "radius"))
         debugLog("  Behavior: Aggressive (hostile)")
