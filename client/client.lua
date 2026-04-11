@@ -134,6 +134,7 @@ end
 -- Instead of always going back to origin (which can lead to the same wall), pick a
 -- random offset direction. Uses GetSafeCoordForPed to find a point on the navmesh.
 -- NOTE: In FiveM Lua, GetSafeCoordForPed returns (bool, vector3) – NOT (bool, x, y, z).
+-- Returns nil when no safe coord is found; callers must handle nil.
 local function getRandomNavPoint(origin, radius)
     local angle = math.random() * 2 * math.pi
     local dist = radius * (0.3 + math.random() * 0.5) -- 30-80% of radius
@@ -143,8 +144,7 @@ local function getRandomNavPoint(origin, radius)
     if found and safeCoord then
         return safeCoord
     end
-    -- Fallback: return origin if no safe coord found
-    return origin
+    return nil -- let the caller decide the fallback (avoids sending NPC into the same obstacle)
 end
 
 -- Helper: Reinforce combat mode so the GTA engine cannot override a TaskCombatPed
@@ -262,10 +262,9 @@ local function setupNpcPed(ped, npc, idx)
     -- Assign to the appropriate relationship group based on behavior.
     -- Guard/Aggressive groups have Dislike/Hate toward the player so GTA's native AI
     -- reacts adversarially (fights back) instead of fleeing when a weapon is drawn.
-    local assignBehavior = normalizeBehavior(npc and npc.behavior)
-    if assignBehavior == "Wache" and NPC_GUARD_GROUP then
+    if behavior == "Wache" and NPC_GUARD_GROUP then
         SetPedRelationshipGroupHash(ped, NPC_GUARD_GROUP)
-    elseif assignBehavior == "Aggressiv" and NPC_AGGRESSIVE_GROUP then
+    elseif behavior == "Aggressiv" and NPC_AGGRESSIVE_GROUP then
         SetPedRelationshipGroupHash(ped, NPC_AGGRESSIVE_GROUP)
     elseif NPC_RELATIONSHIP_GROUP then
         SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
@@ -885,7 +884,13 @@ Citizen.CreateThread(function()
                     FreezeEntityPosition(ped, false)
                     -- Navigate to a random point near origin (not straight to origin, avoids same obstacle path)
                     local navPoint = getRandomNavPoint(origin, radius * 0.5)
-                    TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
+                    if navPoint then
+                        TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
+                    else
+                        -- No navmesh point found; resume wander immediately instead
+                        TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                        SetPedKeepTask(ped, true)
+                    end
                     status.lastRedirectTime = now
                     -- After a delay, resume wandering (in separate thread to not block)
                     Citizen.CreateThread(function()
@@ -995,7 +1000,13 @@ Citizen.CreateThread(function()
                                         FreezeEntityPosition(ped, false)
                                         -- Pick a random navigable point within radius (avoids walking into same obstacle again)
                                         local navPoint = getRandomNavPoint(origin, radius)
-                                        TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
+                                        if navPoint then
+                                            TaskGoToCoordAnyMeans(ped, navPoint.x, navPoint.y, navPoint.z, 1.0, 0, false, 786603, 0.0)
+                                        else
+                                            -- No navmesh point found; resume wander immediately
+                                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                            SetPedKeepTask(ped, true)
+                                        end
                                         -- Resume wandering after reaching the nav point
                                         Citizen.CreateThread(function()
                                             Citizen.Wait(REROUTE_RECOVERY_MS)
