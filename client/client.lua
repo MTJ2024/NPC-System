@@ -11,8 +11,10 @@ local AlleNPCsSpawnenLastList = nil
 local lastNpcDelete = {}
 local syncInProgress = false
 
--- Relationship group hash - prevents NPCs from fighting each other
-local NPC_RELATIONSHIP_GROUP = nil
+-- Relationship group hashes - control NPC reactions to the player
+local NPC_RELATIONSHIP_GROUP = nil   -- Passive/Neutral: Respect(1) - flee from threats
+local NPC_GUARD_GROUP = nil          -- Guard/Wache:     Dislike(4) - fight back when provoked
+local NPC_AGGRESSIVE_GROUP = nil     -- Aggressive:      Hate(5)    - attack on sight
 
 -- Stuck detection thresholds (tuned for responsive obstacle avoidance)
 local STUCK_CHECK_INTERVAL_MS = 1000   -- Minimum time between stuck checks (ms)
@@ -39,19 +41,41 @@ local function debugLog(msg)
     end
 end
 
--- Initialize NPC relationship group so dashboard NPCs don't fight each other
+-- Initialize NPC relationship groups:
+--   NPC_DASHBOARD_GROUP  (Passive/Neutral) → Respect(1) to player  → flee from threats
+--   NPC_GUARD_GROUP      (Guard/Wache)     → Dislike(4) to player  → fight back when provoked
+--   NPC_AGGRESSIVE_GROUP (Aggressive)      → Hate(5)    to player  → native AI auto-attacks on sight
+-- All groups are Companion(0) to each other so NPCs never fight each other.
 Citizen.CreateThread(function()
-    local success = AddRelationshipGroup("NPC_DASHBOARD_GROUP")
+    AddRelationshipGroup("NPC_DASHBOARD_GROUP")
     NPC_RELATIONSHIP_GROUP = GetHashKey("NPC_DASHBOARD_GROUP")
-    if not success then
-        debugLog("WARNING: Failed to create NPC relationship group (may already exist)")
-    end
-    -- NPCs are companions to each other (0 = Companion, won't fight each other)
+    AddRelationshipGroup("NPC_GUARD_GROUP")
+    NPC_GUARD_GROUP = GetHashKey("NPC_GUARD_GROUP")
+    AddRelationshipGroup("NPC_AGGRESSIVE_GROUP")
+    NPC_AGGRESSIVE_GROUP = GetHashKey("NPC_AGGRESSIVE_GROUP")
+
+    -- All NPC groups are companions to each other (they must not fight each other)
     SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_RELATIONSHIP_GROUP)
-    -- NPCs neutral/respectful to players by default (1 = Respect; behavior-specific combat handled by script threads)
-    SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, GetHashKey("PLAYER"))
-    SetRelationshipBetweenGroups(1, GetHashKey("PLAYER"), NPC_RELATIONSHIP_GROUP)
-    debugLog("NPC relationship group initialized")
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_GUARD_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_GUARD_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_RELATIONSHIP_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_RELATIONSHIP_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_RELATIONSHIP_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_GUARD_GROUP, NPC_AGGRESSIVE_GROUP)
+    SetRelationshipBetweenGroups(0, NPC_AGGRESSIVE_GROUP, NPC_GUARD_GROUP)
+
+    local playerGroup = GetHashKey("PLAYER")
+    -- Passive/Neutral NPCs respect the player → GTA native AI makes them flee from armed players
+    SetRelationshipBetweenGroups(1, NPC_RELATIONSHIP_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(1, playerGroup, NPC_RELATIONSHIP_GROUP)
+    -- Guard NPCs dislike the player → GTA native AI fights back when provoked (no flee)
+    SetRelationshipBetweenGroups(4, NPC_GUARD_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(4, playerGroup, NPC_GUARD_GROUP)
+    -- Aggressive NPCs hate the player → GTA native AI attacks on sight (no flee)
+    SetRelationshipBetweenGroups(5, NPC_AGGRESSIVE_GROUP, playerGroup)
+    SetRelationshipBetweenGroups(5, playerGroup, NPC_AGGRESSIVE_GROUP)
+    debugLog("NPC relationship groups initialized (Passive/Guard/Aggressive)")
 end)
 
 -- Spezialwerte aus Config holen (priority: SpecialNpcs > per-NPC DB value > Config default)
@@ -235,8 +259,15 @@ local function setupNpcPed(ped, npc, idx)
     SetPedConfigFlag(ped, 400, true)   -- CPED_CONFIG_FLAG_CanUseDynamicNavmesh: use dynamic navmesh around obstacles
     SetPedConfigFlag(ped, 2, true)     -- CPED_CONFIG_FLAG_NoCriticalHits: avoid ragdolling into obstacles
     
-    -- Assign to NPC relationship group (prevents NPCs from fighting each other)
-    if NPC_RELATIONSHIP_GROUP then
+    -- Assign to the appropriate relationship group based on behavior.
+    -- Guard/Aggressive groups have Dislike/Hate toward the player so GTA's native AI
+    -- reacts adversarially (fights back) instead of fleeing when a weapon is drawn.
+    local assignBehavior = normalizeBehavior(npc and npc.behavior)
+    if assignBehavior == "Wache" and NPC_GUARD_GROUP then
+        SetPedRelationshipGroupHash(ped, NPC_GUARD_GROUP)
+    elseif assignBehavior == "Aggressiv" and NPC_AGGRESSIVE_GROUP then
+        SetPedRelationshipGroupHash(ped, NPC_AGGRESSIVE_GROUP)
+    elseif NPC_RELATIONSHIP_GROUP then
         SetPedRelationshipGroupHash(ped, NPC_RELATIONSHIP_GROUP)
     end
     
