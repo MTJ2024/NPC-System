@@ -109,17 +109,32 @@ end
 -- Helper: Get a random navigable point within radius for obstacle avoidance re-routing.
 -- Instead of always going back to origin (which can lead to the same wall), pick a
 -- random offset direction. Uses GetSafeCoordForPed to find a point on the navmesh.
+-- NOTE: In FiveM Lua, GetSafeCoordForPed returns (bool, vector3) – NOT (bool, x, y, z).
 local function getRandomNavPoint(origin, radius)
     local angle = math.random() * 2 * math.pi
     local dist = radius * (0.3 + math.random() * 0.5) -- 30-80% of radius
     local targetX = origin.x + math.cos(angle) * dist
     local targetY = origin.y + math.sin(angle) * dist
-    local found, safeX, safeY, safeZ = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
-    if found then
-        return vector3(safeX, safeY, safeZ)
+    local found, safeCoord = GetSafeCoordForPed(targetX, targetY, origin.z, true, 16)
+    if found and safeCoord then
+        return safeCoord
     end
     -- Fallback: return origin if no safe coord found
     return origin
+end
+
+-- Helper: Reinforce combat mode so the GTA engine cannot override a TaskCombatPed
+-- call with flee/surrender behaviour.  Must be called immediately before every
+-- TaskCombatPed invocation.
+local function reinforceCombatMode(ped)
+    SetPedCombatAbility(ped, 2)             -- Professional
+    SetPedCombatMovement(ped, 2)            -- Aggressive: advance toward enemy
+    SetPedCombatAttributes(ped, 5, true)    -- BF_AlwaysFight: always fight, never flee
+    SetPedCombatAttributes(ped, 17, true)   -- BF_CanFightArmedPedsWhenNotArmed
+    SetPedCombatAttributes(ped, 14, false)  -- NOT BF_AlwaysFlee
+    SetPedCombatAttributes(ped, 46, true)   -- BF_CanInvestigate: perceive threats
+    SetPedFleeAttributes(ped, 0, true)      -- Clear ALL flee attributes
+    SetBlockingOfNonTemporaryEvents(ped, false) -- Allow events (weapon awareness etc.)
 end
 
 local function npcIsAtOrigin(npc, ped)
@@ -184,9 +199,12 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
-        SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatMovement(ped, 2) -- Aggressive: advance toward enemy (prevents standing still)
+        SetPedFleeAttributes(ped, 0, true) -- Clear ALL flee attributes so NPC never flees
         SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate: enables investigation mode (perceive threats)
         SetPedCombatAttributes(ped, 5, true) -- BF_AlwaysFight: always fight, never flee
+        SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
+        SetPedCombatAttributes(ped, 14, false) -- NOT BF_AlwaysFlee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius") * 1.5)
         SetPedHearingRange(ped, getNpcConfig(npc, "radius") * 1.5)
         debugLog("  Behavior: Guard (protective, will help allies)")
@@ -196,9 +214,12 @@ local function setupNpcPed(ped, npc, idx)
         SetBlockingOfNonTemporaryEvents(ped, false)
         SetPedCombatAbility(ped, 2) -- Professional
         SetPedCombatRange(ped, 2) -- Medium range
-        SetPedFleeAttributes(ped, 0, false) -- Never flee
+        SetPedCombatMovement(ped, 2) -- Aggressive: advance toward enemy (prevents standing still)
+        SetPedFleeAttributes(ped, 0, true) -- Clear ALL flee attributes so NPC never flees
         SetPedCombatAttributes(ped, 46, true) -- BF_CanInvestigate: enables investigation mode (perceive threats)
         SetPedCombatAttributes(ped, 5, true) -- BF_AlwaysFight: always fight, never flee
+        SetPedCombatAttributes(ped, 17, true) -- BF_CanFightArmedPedsWhenNotArmed
+        SetPedCombatAttributes(ped, 14, false) -- NOT BF_AlwaysFlee
         SetPedSeeingRange(ped, getNpcConfig(npc, "radius"))
         SetPedHearingRange(ped, getNpcConfig(npc, "radius"))
         debugLog("  Behavior: Aggressive (hostile)")
@@ -253,6 +274,7 @@ local function setupNpcPed(ped, npc, idx)
                 ClearPedTasksImmediately(pedRef)
                 FreezeEntityPosition(pedRef, false)
                 TaskWanderInArea(pedRef, ox, oy, oz, radius, 2.0, 1.0)
+                SetPedKeepTask(pedRef, true) -- keep wander task, prevent it from being silently dropped
                 debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m (after ground snap)")
             end
         end)
@@ -588,6 +610,7 @@ Citizen.CreateThread(function()
                             debugLog("Aggressive NPC attacking player in radius: " .. tostring(npc.name or npc.model))
                             FreezeEntityPosition(ped, false)
                             ClearPedTasksImmediately(ped)
+                            reinforceCombatMode(ped)
                             TaskCombatPed(ped, playerPed, 0, 16)
                             status.inCombat = true
                             status.pursuing = true
@@ -604,6 +627,7 @@ Citizen.CreateThread(function()
                             if isMovementEnabled(npc) then
                                 FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                SetPedKeepTask(ped, true)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
@@ -622,6 +646,7 @@ Citizen.CreateThread(function()
                                 if isMovementEnabled(npc) then
                                     FreezeEntityPosition(ped, false)
                                     TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                    SetPedKeepTask(ped, true)
                                 else
                                     TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                                 end
@@ -702,6 +727,7 @@ Citizen.CreateThread(function()
                         debugLog("Guard NPC engaging combat: " .. tostring(npc.name or npc.model) .. " - Reason: " .. attackReason)
                         FreezeEntityPosition(ped, false)
                         ClearPedTasksImmediately(ped)
+                        reinforceCombatMode(ped)
                         TaskCombatPed(ped, playerPed, 0, 16)
                         status.inCombat = true
                         status.pursuing = true
@@ -715,6 +741,7 @@ Citizen.CreateThread(function()
                                 debugLog("  Nearby guard joining fight: " .. tostring(guard.npc.name or guard.npc.model))
                                 FreezeEntityPosition(guard.ped, false)
                                 ClearPedTasksImmediately(guard.ped)
+                                reinforceCombatMode(guard.ped)
                                 TaskCombatPed(guard.ped, playerPed, 0, 16)
                                 guardStatus.inCombat = true
                                 guardStatus.pursuing = true
@@ -731,6 +758,7 @@ Citizen.CreateThread(function()
                             if isMovementEnabled(npc) then
                                 FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                SetPedKeepTask(ped, true)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
@@ -749,6 +777,7 @@ Citizen.CreateThread(function()
                                 if isMovementEnabled(npc) then
                                     FreezeEntityPosition(ped, false)
                                     TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                    SetPedKeepTask(ped, true)
                                 else
                                     TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                                 end
@@ -835,6 +864,7 @@ Citizen.CreateThread(function()
                             if st and not st.inCombat and isMovementEnabled(npc) then
                                 FreezeEntityPosition(ped, false)
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                SetPedKeepTask(ped, true)
                             end
                         end
                     end)
@@ -943,6 +973,7 @@ Citizen.CreateThread(function()
                                                 if st and not st.inCombat and isMovementEnabled(npc) then
                                                     FreezeEntityPosition(ped, false)
                                                     TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                                    SetPedKeepTask(ped, true)
                                                 end
                                             end
                                         end)
