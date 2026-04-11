@@ -237,16 +237,43 @@ local function setupNpcPed(ped, npc, idx)
     }
     
     -- Set initial movement behavior
+    -- NOTE: do NOT freeze or issue wander tasks immediately after CreatePed.
+    -- Collision and navmesh are still loading; doing so causes NPCs to hover in mid-air
+    -- (frozen above unloaded ground) or snap to wrong Z.  A short async delay lets the
+    -- engine settle the ped on the correct ground level first.
     if moving then
         FreezeEntityPosition(ped, false)
         local radius = tonumber(getNpcConfig(npc, "radius")) or Config.DefaultRadius
-        TaskWanderInArea(ped, tonumber(npc.x), tonumber(npc.y), tonumber(npc.z), radius, 2.0, 1.0)
-        debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m")
+        local ox, oy, oz = tonumber(npc.x), tonumber(npc.y), tonumber(npc.z)
+        local pedRef = ped
+        Citizen.CreateThread(function()
+            Citizen.Wait(500) -- let navmesh/collision initialise
+            if DoesEntityExist(pedRef) then
+                PlaceObjectOnGroundProperly(pedRef) -- snap to actual ground surface
+                ClearPedTasksImmediately(pedRef)
+                FreezeEntityPosition(pedRef, false)
+                TaskWanderInArea(pedRef, ox, oy, oz, radius, 2.0, 1.0)
+                debugLog("  Movement: Wandering within radius " .. tostring(radius) .. "m (after ground snap)")
+            end
+        end)
     else
         ClearPedTasksImmediately(ped)
         TaskStandStill(ped, -1)
-        FreezeEntityPosition(ped, true)
-        debugLog("  Movement: Stationary")
+        -- Delay freeze so gravity can pull the ped onto the ground before we lock it
+        local pedRef = ped
+        local pedIdx = idx
+        Citizen.CreateThread(function()
+            Citizen.Wait(1000) -- wait for collision/ground to load
+            if DoesEntityExist(pedRef) then
+                PlaceObjectOnGroundProperly(pedRef) -- snap to actual ground surface
+                Citizen.Wait(200) -- brief settle time after snap
+                local st = npcStatus[pedIdx]
+                if DoesEntityExist(pedRef) and st and not st.dead then
+                    FreezeEntityPosition(pedRef, true)
+                    debugLog("  Movement: Stationary (ground-snapped and frozen)")
+                end
+            end
+        end)
     end
     
     return true
@@ -539,9 +566,24 @@ Citizen.CreateThread(function()
                     local npcCoords = GetEntityCoords(ped)
                     local distToPlayer = #(npcCoords - playerCoords)
                     local radius = getNpcConfig(npc, "radius")
-                    
+                    local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+
+                    -- FIX #2: Stop any native-GTA-AI combat against an ignored player.
+                    -- SetBlockingOfNonTemporaryEvents(false) lets the engine start combat on its
+                    -- own (e.g. weapon-draw events), bypassing istSpielerIgnoriert.  We detect
+                    -- that here and force-clear it before any attack logic runs.
+                    if not status.inCombat and IsPedInCombat(ped, playerPed) and istSpielerIgnoriert(npc) then
+                        debugLog("Aggressive NPC: stopping native-AI combat against ignored player: " .. tostring(npc.name or npc.model))
+                        ClearPedTasksImmediately(ped)
+                        if isMovementEnabled(npc) then
+                            FreezeEntityPosition(ped, false)
+                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                        else
+                            TaskStandStill(ped, -1)
+                            FreezeEntityPosition(ped, true)
+                        end
                     -- Attack if player is within radius and NPC is not already in combat
-                    if distToPlayer <= radius and not status.inCombat then
+                    elseif distToPlayer <= radius and not status.inCombat then
                         if not istSpielerIgnoriert(npc) then
                             debugLog("Aggressive NPC attacking player in radius: " .. tostring(npc.name or npc.model))
                             FreezeEntityPosition(ped, false)
@@ -552,12 +594,10 @@ Citizen.CreateThread(function()
                             status.lastAttacker = playerPed
                         end
                     elseif status.inCombat then
-                        -- Check distance from origin to prevent chasing out of zone
-                        local origin = status.origin or vector3(npc.x, npc.y, npc.z)
-                        local distToOrigin = #(npcCoords - origin)
-                        if distToOrigin > radius or distToPlayer > radius * 1.5 then
-                            -- Return to patrol if NPC left zone or player got too far
-                            debugLog("Aggressive NPC ending combat - outside radius zone")
+                        -- FIX #2 (cont.): if an ignored player somehow still has combat tracked,
+                        -- cancel it now.
+                        if istSpielerIgnoriert(npc) then
+                            debugLog("Aggressive NPC: cancelling tracked combat against ignored player: " .. tostring(npc.name or npc.model))
                             status.inCombat = false
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
@@ -566,6 +606,25 @@ Citizen.CreateThread(function()
                                 TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                            end
+                        else
+                            -- FIX #3: For moving NPCs allow a larger pursuit zone (radius*2) so
+                            -- an NPC that wandered to the edge of its area can still chase the
+                            -- player without immediately dropping combat.
+                            local distToOrigin = #(npcCoords - origin)
+                            local maxOriginDist = isMovementEnabled(npc) and (radius * 2.0) or radius
+                            if distToOrigin > maxOriginDist or distToPlayer > radius * 1.5 then
+                                -- Return to patrol if NPC left zone or player got too far
+                                debugLog("Aggressive NPC ending combat - outside radius zone")
+                                status.inCombat = false
+                                status.pursuing = false
+                                ClearPedTasksImmediately(ped)
+                                if isMovementEnabled(npc) then
+                                    FreezeEntityPosition(ped, false)
+                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                else
+                                    TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                                end
                             end
                         end
                     end
@@ -592,7 +651,23 @@ Citizen.CreateThread(function()
                     local npcCoords = GetEntityCoords(ped)
                     local distToPlayer = #(npcCoords - playerCoords)
                     local radius = getNpcConfig(npc, "radius")
-                    
+                    local origin = status.origin or vector3(npc.x, npc.y, npc.z)
+
+                    -- FIX #2: Stop any native-GTA-AI combat against an ignored player.
+                    -- Without this, SetBlockingOfNonTemporaryEvents(false) lets the engine
+                    -- automatically react to weapon-draw events and start combat, which
+                    -- bypasses istSpielerIgnoriert entirely.
+                    if not status.inCombat and IsPedInCombat(ped, playerPed) and istSpielerIgnoriert(npc) then
+                        debugLog("Guard NPC: stopping native-AI combat against ignored player: " .. tostring(npc.name or npc.model))
+                        ClearPedTasksImmediately(ped)
+                        if isMovementEnabled(npc) then
+                            FreezeEntityPosition(ped, false)
+                            TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                        else
+                            TaskStandStill(ped, -1)
+                            FreezeEntityPosition(ped, true)
+                        end
+                    else
                     -- Check if this NPC or any nearby guard was attacked
                     local shouldAttack = false
                     local attackReason = ""
@@ -647,12 +722,9 @@ Citizen.CreateThread(function()
                             end
                         end
                     elseif status.inCombat then
-                        -- Check distance from origin to prevent chasing out of zone
-                        local origin = status.origin or vector3(npc.x, npc.y, npc.z)
-                        local distToOrigin = #(npcCoords - origin)
-                        if distToOrigin > radius or distToPlayer > radius * 2 then
-                            -- Return to post if NPC left zone or player got too far
-                            debugLog("Guard NPC ending combat - outside radius zone")
+                        -- FIX #2 (cont.): cancel tracked combat against an ignored player
+                        if istSpielerIgnoriert(npc) then
+                            debugLog("Guard NPC: cancelling tracked combat against ignored player: " .. tostring(npc.name or npc.model))
                             status.inCombat = false
                             status.pursuing = false
                             ClearPedTasksImmediately(ped)
@@ -662,8 +734,28 @@ Citizen.CreateThread(function()
                             else
                                 TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
                             end
+                        else
+                            -- FIX #3: use a larger max-origin distance for moving NPCs so they
+                            -- don't immediately drop combat just because they wandered to the
+                            -- edge of their wander zone before engaging.
+                            local distToOrigin = #(npcCoords - origin)
+                            local maxOriginDist = isMovementEnabled(npc) and (radius * 2.0) or radius
+                            if distToOrigin > maxOriginDist or distToPlayer > radius * 2 then
+                                -- Return to post if NPC left zone or player got too far
+                                debugLog("Guard NPC ending combat - outside radius zone")
+                                status.inCombat = false
+                                status.pursuing = false
+                                ClearPedTasksImmediately(ped)
+                                if isMovementEnabled(npc) then
+                                    FreezeEntityPosition(ped, false)
+                                    TaskWanderInArea(ped, origin.x, origin.y, origin.z, radius, 2.0, 1.0)
+                                else
+                                    TaskGoToCoordAnyMeans(ped, origin.x, origin.y, origin.z, 1.0, 0, false, 786603, 0.0)
+                                end
+                            end
                         end
                     end
+                    end -- end of native-AI bypass else-block
                 end
             end
         end
